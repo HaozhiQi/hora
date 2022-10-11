@@ -9,7 +9,7 @@ This repository contains a reference PyTorch implementation of the paper:
 [Yi Ma](http://people.eecs.berkeley.edu/~yima/),
 [Jitendra Malik](https://people.eecs.berkeley.edu/~malik/) <br>
 Conference on Robot Learning (CoRL), 2022 <br>
-[[Website](https://haozhi.io/hora)], [[Paper]()]
+[[Website](https://haozhi.io/hora)], [[Paper](https://arxiv.org/abs/2210.04887)]
 
 ## Disclaimer
 
@@ -59,7 +59,7 @@ Download a pretrained policy:
 ```
 cd outputs/AllegroHandHora/
 gdown 1AKecNsQZ56TCyJU49DU06GxnQRbeawMu -O hora.zip
-unzip hora.zip -d ./
+unzip hora.zip -d ./hora
 cd ../../
 ```
 
@@ -102,6 +102,12 @@ After training this policy, you can run `train_s2.sh` to train the proprioceptiv
 ```
 # e.g. scripts/train_s2.sh 0 0 debug
 scripts/train_s2.sh ${GPU_ID} ${SEED_ID} ${OUTPUT_NAME}
+```
+
+If you want to train with the public allegro, use:
+```
+scripts/train_s1.sh ${GPU_ID} ${SEED_ID} ${OUTPUT_NAME} task=PublicAllegroHandHora
+scripts/train_s2.sh ${GPU_ID} ${SEED_ID} ${OUTPUT_NAME} task=PublicAllegroHandHora
 ```
 
 ## Hardware Deployment

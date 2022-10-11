@@ -1,0 +1,109 @@
+# used to create the object
+name: AllegroHandHora
+physics_engine: ${..physics_engine}
+on_evaluation: False
+
+env:
+  # environment basic
+  numEnvs: ${resolve_default:16384,${...num_envs}}
+  numObservations: 96
+  numActions: 16
+  envSpacing: 0.25
+
+  episodeLength: 400
+  enableDebugVis: False
+  aggregateMode: 1
+
+  controller:
+    torque_control: True
+    controlFrequencyInv: 6  # 20Hz
+    pgain: 3
+    dgain: 0.1
+
+  genGrasps: False
+
+  clipObservations: 5.0
+  clipActions: 1.0
+  reset_height_threshold: 0.645
+  grasp_cache_name: 'internal_allegro'
+
+  # Random forces applied to the object
+  forceScale: 0.0
+  randomForceProbScalar: 0.0
+  forceDecay: 0.9
+  forceDecayInterval: 0.08
+
+  hora:
+    propHistoryLen: 30
+
+  reward:
+    angvelClipMin: -0.5
+    angvelClipMax: 0.5
+    rotateRewardScale: 1.0
+    objLinvelPenaltyScale: -0.3
+    poseDiffPenaltyScale: -0.3
+    torquePenaltyScale: -0.1
+    workPenaltyScale: -2.0
+
+  baseObjScale: 0.8
+  randomization:
+    # Randomization Property
+    randomizeMass: True
+    randomizeMassLower: 0.01
+    randomizeMassUpper: 0.25
+    randomizeCOM: True
+    randomizeCOMLower: -0.01
+    randomizeCOMUpper: 0.01
+    randomizeFriction: True
+    randomizeFrictionLower: 0.3
+    randomizeFrictionUpper: 3.0
+    randomizeScale: True
+    # if scale_list_init is True, randomizeScaleLower and randomizeScaleUpper is not useful
+    scaleListInit: True
+    randomizeScaleList: [0.7, 0.72, 0.74, 0.76, 0.78, 0.8, 0.82, 0.84, 0.86]
+    randomizeScaleLower: 0.75  # only useful when not scaleListInit
+    randomizeScaleUpper: 0.8  # only useful when not scaleListInit
+    randomizePDGains: True
+    randomizePGainLower: 2.9
+    randomizePGainUpper: 3.1
+    randomizeDGainLower: 0.09
+    randomizeDGainUpper: 0.11
+    jointNoiseScale: 0.02
+
+  privInfo:
+    enableObjPos: True
+    enableObjScale: True
+    enableObjMass: True
+    enableObjCOM: True
+    enableObjFriction: True
+
+  object:
+    type: 'block' # can be block, egg or pen
+    sampleProb: [1.0]
+
+  asset:
+    handAsset: 'assets/allegro/allegro_internal.urdf'
+
+  # set to True if you use camera sensors in the environment
+  enableCameraSensors: False
+
+sim:
+  dt: 0.0083333 # 120 Hz
+  substeps: 1
+  up_axis: 'z'
+  use_gpu_pipeline: ${eq:${...pipeline},'gpu'}
+  gravity: [0.0, 0.0, -9.81]
+  physx:
+    num_threads: ${....num_threads}
+    solver_type: ${....solver_type}
+    use_gpu: ${contains:'cuda',${....sim_device}} # set to False to run on CPU
+    num_position_iterations: 8
+    num_velocity_iterations: 0
+    max_gpu_contact_pairs: 8388608 # 8*1024*1024
+    num_subscenes: ${....num_subscenes}
+    contact_offset: 0.002
+    rest_offset: 0.0
+    bounce_threshold_velocity: 0.2
+    max_depenetration_velocity: 1000.0
+    default_buffer_size_multiplier: 5.0
+    contact_collection: 2 # 0: CC_NEVER (don't collect contact info), 1: CC_LAST_SUBSTEP (collect only contacts on last substep), 2: CC_ALL_SUBSTEPS (default - all contacts)

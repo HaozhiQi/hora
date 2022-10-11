@@ -1,0 +1,11 @@
+defaults:
+  - AllegroHandHora
+env:
+  reset_height_threshold: 0.625
+  grasp_cache_name: 'public_allegro'
+
+  reward:
+    rotateRewardScale: 1.25
+
+  asset:
+     handAsset: 'assets/allegro/allegro.urdf'

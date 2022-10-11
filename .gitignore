@@ -1,0 +1,21 @@
+*.egg-info
+/.vs
+/.vscode
+/_package
+/shaders
+._tmptext.txt
+__pycache__/
+/tools/format/.lastrun
+*.pyc
+_doxygen
+*.pxd2
+/tests/logs
+
+.idea
+outputs/
+*.hydra*
+# generated grasp files
+*.npy
+
+outputs
+cache

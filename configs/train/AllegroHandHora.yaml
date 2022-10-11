@@ -1,0 +1,43 @@
+seed: ${..seed}
+algo: PPO
+network:
+  mlp:
+    units: [512, 256, 128]
+  priv_mlp:
+    units: [256, 128, 8]
+
+load_path: ${..checkpoint} # path to the checkpoint to load
+
+ppo:
+  output_name: 'debug'
+  normalize_input: True
+  normalize_value: True
+  value_bootstrap: True
+  num_actors: ${...task.env.numEnvs}
+  normalize_advantage: True
+  gamma: 0.99
+  tau: 0.95
+  learning_rate: 5e-3
+  kl_threshold: 0.02
+  # PPO batch collection
+  horizon_length: 8
+  minibatch_size: 32768
+  mini_epochs: 5
+  # PPO loss setting
+  clip_value: True
+  critic_coef: 4
+  entropy_coef: 0.0
+  e_clip: 0.2
+  bounds_loss_coef: 0.0001
+  # grad clipping
+  truncate_grads: True
+  grad_norm: 1.0
+  # snapshot setting
+  save_best_after: 0
+  save_frequency: 500
+  max_agent_steps: 1500000000
+  # hora setting
+  priv_info: False
+  priv_info_dim: 9
+  priv_info_embed_dim: 8
+  proprio_adapt: False

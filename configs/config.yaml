@@ -1,0 +1,47 @@
+# Task name - used to pick the class to load
+task_name: ${task.name}
+
+# if set to positive integer, overrides the default number of environments
+num_envs: ''
+
+# seed - set to -1 to choose random seed
+seed: 42
+
+## Device config
+#  'physx' or 'flex'
+physics_engine: 'physx'
+# whether to use cpu or gpu pipeline
+pipeline: 'gpu'
+# device for running physics simulation
+sim_device: 'cuda:0'
+# device to run RL
+rl_device: 'cuda:0'
+graphics_device_id: 0
+
+## PhysX arguments
+num_threads: 4 # Number of worker threads per scene used by PhysX - for CPU PhysX only.
+solver_type: 1 # 0: pgs, 1: tgs
+num_subscenes: 4 # Splits the simulation into N physics scenes and runs each one in a separate thread
+
+# RLGames Arguments
+# test - if set, run policy in inference mode (requires setting checkpoint to load)
+test: False
+# used to set checkpoint path
+checkpoint: ''
+
+# disables rendering
+headless: False
+
+# set default task and default training config based on task
+defaults:
+  - _self_
+  - task: AllegroHandHora
+  - train: ${task}
+  - override hydra/job_logging: disabled
+
+# set the directory where the output files get saved
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+

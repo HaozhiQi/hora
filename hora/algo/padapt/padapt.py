@@ -1,6 +1,6 @@
 # --------------------------------------------------------
 # In-Hand Object Rotation via Rapid Motor Adaptation
-# https://[arxiv link]
+# https://arxiv.org/abs/2210.04887
 # Copyright (c) 2022 Haozhi Qi
 # Licensed under The MIT License [see LICENSE for details]
 # --------------------------------------------------------

@@ -9,7 +9,7 @@ In this document, we provide instructions of how to properly install this codeba
 You can skip this section if you are not using conda virtual environment.
 
 ```
-conda create -y -n hora python=3.6
+conda create -y -n hora python=3.8
 conda activate hora
 # (optional) install gdown for downloading
 conda install -c conda-forge gdown urllib3
@@ -39,6 +39,7 @@ python examples/joint_monkey.py
 ```
 git clone https://github.com/HaozhiQi/hora
 cd hora
+pip install -r requirements.txt
 ```
 
 Next, follow the main instructions to test if you install correctly.

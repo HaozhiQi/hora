@@ -604,15 +604,16 @@ class AllegroHandHora(VecTask):
         object_start_pose.p.z = allegro_hand_start_pose.p.z + pose_dz
 
         object_start_pose.p.y = allegro_hand_start_pose.p.y - 0.01
-        # this weird thing is an unknown issue
-        if self.save_init_pose:
-            object_start_pose.p.z = (self.reset_z_threshold + 0.015)
-        else:
-            object_start_pose.p.z = (self.reset_z_threshold + 0.005)
-
-        if self.evaluate:
-            object_start_pose.p.z = object_start_pose.p.z + 0.045
-            
+        # for grasp pose generation, it is used to initialize the object
+        # it should be slightly higher than the fingertip
+        # so it is set to be 0.66 for internal allegro and 0.64 for the public allegro
+        # ----
+        # for in-hand object rotation, the initialization of z is only used in the first step
+        # it is set to be 0.65 for backward compatibility
+        object_z = 0.66 if self.save_init_pose else 0.65
+        if 'internal' not in self.grasp_cache_name:
+            object_z -= 0.02
+        object_start_pose.p.z = object_z
         return allegro_hand_start_pose, object_start_pose
 
 

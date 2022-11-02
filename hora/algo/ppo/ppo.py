@@ -184,13 +184,14 @@ class PPO(object):
 
             mean_rewards = self.episode_rewards.get_mean()
             mean_lengths = self.episode_lengths.get_mean()
-            self.writer.add_scalar('rewards/step', mean_rewards, self.agent_steps)
+            self.writer.add_scalar('episode_rewards/step', mean_rewards, self.agent_steps)
             self.writer.add_scalar('episode_lengths/step', mean_lengths, self.agent_steps)
             checkpoint_name = f'ep_{self.epoch_num}_step_{int(self.agent_steps // 1e6):04}M_reward_{mean_rewards:.2f}'
 
             if self.save_freq > 0:
-                if (self.epoch_num % self.save_freq == 0) and (mean_rewards <= self.best_rewards):
+                if self.epoch_num % self.save_freq == 0:
                     self.save(os.path.join(self.nn_dir, checkpoint_name))
+                    self.save(os.path.join(self.nn_dir, 'last'))
 
             if mean_rewards > self.best_rewards and self.epoch_num >= self.save_best_after:
                 print(f'save current best reward: {mean_rewards:.2f}')

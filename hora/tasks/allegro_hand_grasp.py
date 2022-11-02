@@ -51,13 +51,13 @@ class AllegroHandGrasp(AllegroHandHora):
                 device=self.device).squeeze(1)
 
         # generate random values
-        rand_floats = torch_rand_float(-1.0, 1.0, (len(env_ids), self.num_shadow_hand_dofs * 2 + 5), device=self.device)
+        rand_floats = torch_rand_float(-1.0, 1.0, (len(env_ids), self.num_allegro_hand_dofs * 2 + 5), device=self.device)
 
         # reset rigid body forces
         self.rb_forces[env_ids, :, :] = 0.0
         success = self.progress_buf[env_ids] == self.max_episode_length
         all_states = torch.cat([
-            self.shadow_hand_dof_pos, self.root_state_tensor[self.object_indices, :7]
+            self.allegro_hand_dof_pos, self.root_state_tensor[self.object_indices, :7]
         ], dim=1)
         self.saved_grasping_states = torch.cat([self.saved_grasping_states, all_states[env_ids][success]])
         print('current cache size:', self.saved_grasping_states.shape[0])
@@ -82,13 +82,13 @@ class AllegroHandGrasp(AllegroHandHora):
                                                      gymtorch.unwrap_tensor(object_indices), len(object_indices))
 
         pos = to_torch(self.canonical_pose)[None].repeat(len(env_ids), 1)
-        pos += 0.25 * rand_floats[:, 5:5 + self.num_shadow_hand_dofs]
-        pos = tensor_clamp(pos, self.shadow_hand_dof_lower_limits, self.shadow_hand_dof_upper_limits)
+        pos += 0.25 * rand_floats[:, 5:5 + self.num_allegro_hand_dofs]
+        pos = tensor_clamp(pos, self.allegro_hand_dof_lower_limits, self.allegro_hand_dof_upper_limits)
 
-        self.shadow_hand_dof_pos[env_ids, :] = pos
-        self.shadow_hand_dof_vel[env_ids, :] = 0
-        self.prev_targets[env_ids, :self.num_shadow_hand_dofs] = pos
-        self.cur_targets[env_ids, :self.num_shadow_hand_dofs] = pos
+        self.allegro_hand_dof_pos[env_ids, :] = pos
+        self.allegro_hand_dof_vel[env_ids, :] = 0
+        self.prev_targets[env_ids, :self.num_allegro_hand_dofs] = pos
+        self.cur_targets[env_ids, :self.num_allegro_hand_dofs] = pos
 
         hand_indices = self.hand_indices[env_ids].to(torch.int32)
         if not self.torque_control:

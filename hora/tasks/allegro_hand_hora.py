@@ -61,12 +61,12 @@ class AllegroHandHora(VecTask):
         net_contact_forces = self.gym.acquire_net_contact_force_tensor(self.sim)
 
         # create some wrapper tensors for different slices
-        self.shadow_hand_default_dof_pos = torch.zeros(self.num_shadow_hand_dofs, dtype=torch.float, device=self.device)
+        self.allegro_hand_default_dof_pos = torch.zeros(self.num_allegro_hand_dofs, dtype=torch.float, device=self.device)
         self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
         self.contact_forces = gymtorch.wrap_tensor(net_contact_forces).view(self.num_envs, -1, 3)
-        self.shadow_hand_dof_state = self.dof_state.view(self.num_envs, -1, 2)[:, :self.num_shadow_hand_dofs]
-        self.shadow_hand_dof_pos = self.shadow_hand_dof_state[..., 0]
-        self.shadow_hand_dof_vel = self.shadow_hand_dof_state[..., 1]
+        self.allegro_hand_dof_state = self.dof_state.view(self.num_envs, -1, 2)[:, :self.num_allegro_hand_dofs]
+        self.allegro_hand_dof_pos = self.allegro_hand_dof_state[..., 0]
+        self.allegro_hand_dof_vel = self.allegro_hand_dof_state[..., 1]
 
         self.rigid_body_states = gymtorch.wrap_tensor(rigid_body_tensor).view(self.num_envs, -1, 13)
         self.num_bodies = self.rigid_body_states.shape[1]
@@ -124,37 +124,37 @@ class AllegroHandHora(VecTask):
 
         self._create_object_asset()
 
-        # set shadow_hand dof properties
-        self.num_shadow_hand_dofs = self.gym.get_asset_dof_count(self.hand_asset)
-        shadow_hand_dof_props = self.gym.get_asset_dof_properties(self.hand_asset)
+        # set allegro_hand dof properties
+        self.num_allegro_hand_dofs = self.gym.get_asset_dof_count(self.hand_asset)
+        allegro_hand_dof_props = self.gym.get_asset_dof_properties(self.hand_asset)
 
-        self.shadow_hand_dof_lower_limits = []
-        self.shadow_hand_dof_upper_limits = []
+        self.allegro_hand_dof_lower_limits = []
+        self.allegro_hand_dof_upper_limits = []
 
-        for i in range(self.num_shadow_hand_dofs):
-            self.shadow_hand_dof_lower_limits.append(shadow_hand_dof_props['lower'][i])
-            self.shadow_hand_dof_upper_limits.append(shadow_hand_dof_props['upper'][i])
-            shadow_hand_dof_props['effort'][i] = 0.5
+        for i in range(self.num_allegro_hand_dofs):
+            self.allegro_hand_dof_lower_limits.append(allegro_hand_dof_props['lower'][i])
+            self.allegro_hand_dof_upper_limits.append(allegro_hand_dof_props['upper'][i])
+            allegro_hand_dof_props['effort'][i] = 0.5
             if self.torque_control:
-                shadow_hand_dof_props['stiffness'][i] = 0.
-                shadow_hand_dof_props['damping'][i] = 0.
-                shadow_hand_dof_props['driveMode'][i] = gymapi.DOF_MODE_EFFORT
+                allegro_hand_dof_props['stiffness'][i] = 0.
+                allegro_hand_dof_props['damping'][i] = 0.
+                allegro_hand_dof_props['driveMode'][i] = gymapi.DOF_MODE_EFFORT
             else:
-                shadow_hand_dof_props['stiffness'][i] = self.config['env']['controller']['pgain']
-                shadow_hand_dof_props['damping'][i] = self.config['env']['controller']['dgain']
-            shadow_hand_dof_props['friction'][i] = 0.01
-            shadow_hand_dof_props['armature'][i] = 0.001
+                allegro_hand_dof_props['stiffness'][i] = self.config['env']['controller']['pgain']
+                allegro_hand_dof_props['damping'][i] = self.config['env']['controller']['dgain']
+            allegro_hand_dof_props['friction'][i] = 0.01
+            allegro_hand_dof_props['armature'][i] = 0.001
 
-        self.shadow_hand_dof_lower_limits = to_torch(self.shadow_hand_dof_lower_limits, device=self.device)
-        self.shadow_hand_dof_upper_limits = to_torch(self.shadow_hand_dof_upper_limits, device=self.device)
+        self.allegro_hand_dof_lower_limits = to_torch(self.allegro_hand_dof_lower_limits, device=self.device)
+        self.allegro_hand_dof_upper_limits = to_torch(self.allegro_hand_dof_upper_limits, device=self.device)
 
         hand_pose, obj_pose = self._init_object_pose()
 
         # compute aggregate size
-        self.num_shadow_hand_bodies = self.gym.get_asset_rigid_body_count(self.hand_asset)
-        self.num_shadow_hand_shapes = self.gym.get_asset_rigid_shape_count(self.hand_asset)
-        max_agg_bodies = self.num_shadow_hand_bodies + 2
-        max_agg_shapes = self.num_shadow_hand_shapes + 2
+        self.num_allegro_hand_bodies = self.gym.get_asset_rigid_body_count(self.hand_asset)
+        self.num_allegro_hand_shapes = self.gym.get_asset_rigid_shape_count(self.hand_asset)
+        max_agg_bodies = self.num_allegro_hand_bodies + 2
+        max_agg_shapes = self.num_allegro_hand_shapes + 2
 
         self.envs = []
 
@@ -163,9 +163,9 @@ class AllegroHandHora(VecTask):
         self.hand_indices = []
         self.object_indices = []
 
-        shadow_hand_rb_count = self.gym.get_asset_rigid_body_count(self.hand_asset)
+        allegro_hand_rb_count = self.gym.get_asset_rigid_body_count(self.hand_asset)
         object_rb_count = 1
-        self.object_rb_handles = list(range(shadow_hand_rb_count, shadow_hand_rb_count + object_rb_count))
+        self.object_rb_handles = list(range(allegro_hand_rb_count, allegro_hand_rb_count + object_rb_count))
 
         for i in range(num_envs):
             # create env instance
@@ -175,7 +175,7 @@ class AllegroHandHora(VecTask):
 
             # add hand - collision filter = -1 to use asset collision filters set in mjcf loader
             hand_actor = self.gym.create_actor(env_ptr, self.hand_asset, hand_pose, 'hand', i, -1, 0)
-            self.gym.set_actor_dof_properties(env_ptr, hand_actor, shadow_hand_dof_props)
+            self.gym.set_actor_dof_properties(env_ptr, hand_actor, allegro_hand_dof_props)
             hand_idx = self.gym.get_actor_index(env_ptr, hand_actor, gymapi.DOMAIN_SIM)
             self.hand_indices.append(hand_idx)
 
@@ -277,10 +277,10 @@ class AllegroHandHora(VecTask):
             self.root_state_tensor[self.object_indices[s_ids], :7] = sampled_pose[:, 16:]
             self.root_state_tensor[self.object_indices[s_ids], 7:13] = 0
             pos = sampled_pose[:, :16]
-            self.shadow_hand_dof_pos[s_ids, :] = pos
-            self.shadow_hand_dof_vel[s_ids, :] = 0
-            self.prev_targets[s_ids, :self.num_shadow_hand_dofs] = pos
-            self.cur_targets[s_ids, :self.num_shadow_hand_dofs] = pos
+            self.allegro_hand_dof_pos[s_ids, :] = pos
+            self.allegro_hand_dof_vel[s_ids, :] = 0
+            self.prev_targets[s_ids, :self.num_allegro_hand_dofs] = pos
+            self.cur_targets[s_ids, :self.num_allegro_hand_dofs] = pos
             self.init_pose_buf[s_ids, :] = pos.clone()
 
         object_indices = torch.unique(self.object_indices[env_ids]).to(torch.int32)
@@ -301,9 +301,9 @@ class AllegroHandHora(VecTask):
         self._refresh_gym()
         # deal with normal observation, do sliding window
         prev_obs_buf = self.obs_buf_lag_history[:, 1:].clone()
-        joint_noise_matrix = (torch.rand(self.shadow_hand_dof_pos.shape) * 2.0 - 1.0) * self.joint_noise_scale
+        joint_noise_matrix = (torch.rand(self.allegro_hand_dof_pos.shape) * 2.0 - 1.0) * self.joint_noise_scale
         cur_obs_buf = unscale(
-            joint_noise_matrix.to(self.device) + self.shadow_hand_dof_pos, self.shadow_hand_dof_lower_limits, self.shadow_hand_dof_upper_limits
+            joint_noise_matrix.to(self.device) + self.allegro_hand_dof_pos, self.allegro_hand_dof_lower_limits, self.allegro_hand_dof_upper_limits
         ).clone().unsqueeze(1)
         cur_tar_buf = self.cur_targets[:, None]
         cur_obs_buf = torch.cat([cur_obs_buf, cur_tar_buf], dim=-1)
@@ -312,10 +312,10 @@ class AllegroHandHora(VecTask):
         # refill the initialized buffers
         at_reset_env_ids = self.at_reset_buf.nonzero(as_tuple=False).squeeze(-1)
         self.obs_buf_lag_history[at_reset_env_ids, :, 0:16] = unscale(
-            self.shadow_hand_dof_pos[at_reset_env_ids], self.shadow_hand_dof_lower_limits,
-            self.shadow_hand_dof_upper_limits
+            self.allegro_hand_dof_pos[at_reset_env_ids], self.allegro_hand_dof_lower_limits,
+            self.allegro_hand_dof_upper_limits
         ).clone().unsqueeze(1)
-        self.obs_buf_lag_history[at_reset_env_ids, :, 16:32] = self.shadow_hand_dof_pos[at_reset_env_ids].unsqueeze(1)
+        self.obs_buf_lag_history[at_reset_env_ids, :, 16:32] = self.allegro_hand_dof_pos[at_reset_env_ids].unsqueeze(1)
         t_buf = (self.obs_buf_lag_history[:, -3:].reshape(self.num_envs, -1)).clone()
 
         self.obs_buf[:, :t_buf.shape[1]] = t_buf
@@ -327,7 +327,7 @@ class AllegroHandHora(VecTask):
     def compute_reward(self, actions):
         self.rot_axis_buf[:, -1] = -1
         # pose diff penalty
-        pose_diff_penalty = ((self.shadow_hand_dof_pos - self.init_pose_buf) ** 2).sum(-1)
+        pose_diff_penalty = ((self.allegro_hand_dof_pos - self.init_pose_buf) ** 2).sum(-1)
         # work and torque penalty
         torque_penalty = (self.torques ** 2).sum(-1)
         work_penalty = ((self.torques * self.dof_vel_finite_diff).sum(-1)) ** 2
@@ -406,7 +406,7 @@ class AllegroHandHora(VecTask):
     def pre_physics_step(self, actions):
         self.actions = actions.clone().to(self.device)
         targets = self.prev_targets + 1 / 24 * self.actions
-        self.cur_targets[:] = tensor_clamp(targets, self.shadow_hand_dof_lower_limits, self.shadow_hand_dof_upper_limits)
+        self.cur_targets[:] = tensor_clamp(targets, self.allegro_hand_dof_lower_limits, self.allegro_hand_dof_upper_limits)
         self.prev_targets[:] = self.cur_targets.clone()
 
         if self.force_scale > 0.0:
@@ -435,10 +435,10 @@ class AllegroHandHora(VecTask):
         return self.obs_dict, self.rew_buf, self.reset_buf, self.extras
 
     def update_low_level_control(self):
-        previous_dof_pos = self.shadow_hand_dof_pos.clone()
+        previous_dof_pos = self.allegro_hand_dof_pos.clone()
         self._refresh_gym()
         if self.torque_control:
-            dof_pos = self.shadow_hand_dof_pos
+            dof_pos = self.allegro_hand_dof_pos
             dof_vel = (dof_pos - previous_dof_pos) / self.dt
             self.dof_vel_finite_diff = dof_vel.clone()
             torques = self.p_gain * (self.cur_targets - dof_pos) - self.d_gain * dof_vel
@@ -549,7 +549,7 @@ class AllegroHandHora(VecTask):
     def _allocate_task_buffer(self, num_envs):
         # extra buffers for observe randomized params
         self.prop_hist_len = self.config['env']['hora']['propHistoryLen']
-        self.num_env_factors = 9
+        self.num_env_factors = self.config['env']['hora']['privInfoDim']
         self.priv_info_buf = torch.zeros((num_envs, self.num_env_factors), device=self.device, dtype=torch.float)
         self.proprio_hist_buf = torch.zeros((num_envs, self.prop_hist_len, 32), device=self.device, dtype=torch.float)
 
@@ -590,20 +590,20 @@ class AllegroHandHora(VecTask):
             self.object_asset_list.append(object_asset)
 
     def _init_object_pose(self):
-        shadow_hand_start_pose = gymapi.Transform()
-        shadow_hand_start_pose.p = gymapi.Vec3(0, 0, 0.5)
-        shadow_hand_start_pose.r = gymapi.Quat.from_axis_angle(
+        allegro_hand_start_pose = gymapi.Transform()
+        allegro_hand_start_pose.p = gymapi.Vec3(0, 0, 0.5)
+        allegro_hand_start_pose.r = gymapi.Quat.from_axis_angle(
             gymapi.Vec3(0, 1, 0), -np.pi / 2) * gymapi.Quat.from_axis_angle(gymapi.Vec3(1, 0, 0), np.pi / 2)
         object_start_pose = gymapi.Transform()
         object_start_pose.p = gymapi.Vec3()
-        object_start_pose.p.x = shadow_hand_start_pose.p.x
+        object_start_pose.p.x = allegro_hand_start_pose.p.x
         pose_dx, pose_dy, pose_dz = -0.01, -0.04, 0.15
 
-        object_start_pose.p.x = shadow_hand_start_pose.p.x + pose_dx
-        object_start_pose.p.y = shadow_hand_start_pose.p.y + pose_dy
-        object_start_pose.p.z = shadow_hand_start_pose.p.z + pose_dz
+        object_start_pose.p.x = allegro_hand_start_pose.p.x + pose_dx
+        object_start_pose.p.y = allegro_hand_start_pose.p.y + pose_dy
+        object_start_pose.p.z = allegro_hand_start_pose.p.z + pose_dz
 
-        object_start_pose.p.y = shadow_hand_start_pose.p.y - 0.01
+        object_start_pose.p.y = allegro_hand_start_pose.p.y - 0.01
         # this weird thing is an unknown issue
         if self.save_init_pose:
             object_start_pose.p.z = (self.reset_z_threshold + 0.015)
@@ -613,7 +613,7 @@ class AllegroHandHora(VecTask):
         if self.evaluate:
             object_start_pose.p.z = object_start_pose.p.z + 0.045
             
-        return shadow_hand_start_pose, object_start_pose
+        return allegro_hand_start_pose, object_start_pose
 
 
 def compute_hand_reward(

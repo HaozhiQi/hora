@@ -84,6 +84,7 @@ class HardwarePlayer(object):
         for t in range(hz * 4):
             tprint(f'setup {t} / {hz * 4}')
             allegro.command_joint_position(self.init_pose)
+            obses, _ = allegro.poll_joint_position(wait=True)
             ros_rate.sleep()
 
         obses, _ = allegro.poll_joint_position(wait=True)
@@ -95,7 +96,8 @@ class HardwarePlayer(object):
         def unscale(x, lower, upper):
             return (2.0 * x - upper - lower) / (upper - lower)
 
-        prev_target = torch.from_numpy(obses[None].astype(np.float32)).cuda()
+        obses = torch.from_numpy(obses.astype(np.float32)).cuda()
+        prev_target = obses[None].clone()
         cur_obs_buf = unscale(obses, self.allegro_dof_lower, self.allegro_dof_upper)[None]
 
         for i in range(3):
@@ -125,6 +127,7 @@ class HardwarePlayer(object):
             # get o_{t+1}
             obses, torques = allegro.poll_joint_position(wait=True)
             obses = _obs_allegro2hora(obses)
+            obses = torch.from_numpy(obses.astype(np.float32)).cuda()
 
             cur_obs_buf = unscale(obses, self.allegro_dof_lower, self.allegro_dof_upper)[None]
             prev_obs_buf = obs_buf[:, 32:].clone()

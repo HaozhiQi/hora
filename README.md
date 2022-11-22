@@ -9,14 +9,16 @@ This repository contains a reference PyTorch implementation of the paper:
 [Yi Ma](http://people.eecs.berkeley.edu/~yima/),
 [Jitendra Malik](https://people.eecs.berkeley.edu/~malik/) <br>
 Conference on Robot Learning (CoRL), 2022 <br>
-[[Website](https://haozhi.io/hora)], [[Paper](https://arxiv.org/abs/2210.04887)]
+[[Website](https://haozhi.io/hora)],
+[[Paper](https://arxiv.org/abs/2210.04887)],
+[[Video](https://www.youtube.com/watch?v=yH0e0l-H7-8)]
 
 ## Disclaimer
 
 It is worth noticing that:
 1. Simulation: The method is developed and debugged using IsaacGym Preview 3.0 ([Download](https://drive.google.com/file/d/1oK-QMZ40PO60PFWWsTmtK5ToFDkbL6R0/)), IsaacGymEnvs ([e860979](https://github.com/NVIDIA-Omniverse/IsaacGymEnvs/tree/e86097999b88da28b5252be16f81c595bbb3fca5)). Versions newer than these should work, but have not been extensively tested yet.
-2. Hardware: The method is developed using an internal version of AllegroHand. We also provide a reference implementation and [video results](https://haozhi.io/hora/allegro_v4) using the public AllegroHand-v4.
-3. Results: The reward number in this repository are higher than what is reported in the paper. This is because we change the `reset` function order following [LeggedGym](https://github.com/leggedrobotics/legged_gym) instead of the one in [IsaacGymEnvs](https://github.com/NVIDIA-Omniverse/IsaacGymEnvs/blob/main/isaacgymenvs/tasks/base/vec_task.py).
+2. Hardware: The method is developed using an internal version of AllegroHand. We also provide a reference implementation (see the *Training the Policy* section for details) and [video results](https://haozhi.io/hora/allegro_v4) using the public AllegroHand-v4.
+3. Results: The reward number in this repository are higher than what is reported in the paper. This is because we change the `reset` function order following [LeggedGym](https://github.com/leggedrobotics/legged_gym) instead of the one in [IsaacGymEnvs](https://github.com/NVIDIA-Omniverse/IsaacGymEnvs/blob/e8f1c66b24/isaacgymenvs/tasks/base/vec_task.py).
 
 ## Installation
 
@@ -31,7 +33,7 @@ This repository contains the following functionalities:
 
 ### Prerequisite
 
-We consider in-hand object rotation starting from a stable initial grasp. Download the pre-computed grasping pose files (see [development instructions](docs/dev.md) for how to customize grasp generation).
+In this paper, we consider in-hand object rotation starting from a stable initial grasp. Download the pre-computed grasping pose files (see [development instructions](docs/dev.md) for how to customize grasp generation) for both the public allegro hand and our internal allegro hand.
 
 ```
 # file size 109M
@@ -39,9 +41,12 @@ gdown 1xqmCDCiZjl2N7ndGsS_ZvnpViU7PH7a3 -O cache/data.zip
 unzip cache/data.zip -d cache/
 ```
 
-The data structure should look like:
+The data structure should look like the following:
 
 ```
+# s07 means the size of the object is 0.7 times canonical size.
+# 50k means there are 50k randomly sampled grasping pose for each scale.
+
 cache/
   internal_allegro_grasp_50k_s07.npy
   ...
@@ -74,7 +79,7 @@ outputs/
       stage2_tb/  # stage 2 tensorboard records
 ```
 
-Visualize it:
+Visualize it by running the following command. Note that stage 1 policy refers to the one trained with privileged object information while stage 2 policy refers to the one trained with proprioceptive history. The stage 2 policy is also what we deployed in the real-world.
 
 ```
 # s1 and s2 stands for stage 1 and 2, respectively
@@ -82,7 +87,7 @@ scripts/vis_s1.sh hora
 scripts/vis_s2.sh hora
 ```
 
-Evaluate it:
+Evaluate this two policies by running:
 
 ```
 # change {GPU_ID} to a valid number

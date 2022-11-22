@@ -2,8 +2,6 @@
 
 In this documentation, we provide explanations to the code structure and starting point for your customized usage.
 
-(This document is still under active polishing and construction, ping me in discord if you need help or want to contribute).
-
 ## File Structure
 
 ```

@@ -81,7 +81,7 @@ class AllegroHandGrasp(AllegroHandHora):
         self.gym.set_actor_root_state_tensor_indexed(self.sim, gymtorch.unwrap_tensor(self.root_state_tensor),
                                                      gymtorch.unwrap_tensor(object_indices), len(object_indices))
 
-        pos = to_torch(self.canonical_pose)[None].repeat(len(env_ids), 1)
+        pos = to_torch(self.canonical_pose, device=self.device)[None].repeat(len(env_ids), 1)
         pos += 0.25 * rand_floats[:, 5:5 + self.num_allegro_hand_dofs]
         pos = tensor_clamp(pos, self.allegro_hand_dof_lower_limits, self.allegro_hand_dof_upper_limits)
 

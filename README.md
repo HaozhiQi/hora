@@ -13,6 +13,10 @@ Conference on Robot Learning (CoRL), 2022 <br>
 [[Paper](https://arxiv.org/abs/2210.04887)],
 [[Video](https://www.youtube.com/watch?v=yH0e0l-H7-8)]
 
+<p align="center">
+  <img src="https://user-images.githubusercontent.com/10141467/204687717-bb649cb5-ab0f-4450-a98b-2d40788029f6.gif" width="1000" height="399"/>
+</p>
+
 ## Disclaimer
 
 It is worth noticing that:

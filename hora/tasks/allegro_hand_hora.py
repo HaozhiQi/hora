@@ -10,7 +10,7 @@ import torch
 import numpy as np
 from isaacgym import gymtorch
 from isaacgym import gymapi
-from isaacgym.torch_utils import to_torch, unscale, quat_apply, tensor_clamp, torch_rand_float
+from isaacgym.torch_utils import to_torch, unscale, quat_apply, tensor_clamp, torch_rand_float, quat_conjugate, quat_mul
 from glob import glob
 from hora.utils.misc import tprint
 from .base.vec_task import VecTask
@@ -99,6 +99,8 @@ class AllegroHandHora(VecTask):
         self.rot_axis_buf = torch.zeros((self.num_envs, 3), device=self.device, dtype=torch.float)
 
         # useful buffers
+        self.object_rot_prev = self.object_rot.clone()
+        self.object_pos_prev = self.object_pos.clone()
         self.init_pose_buf = torch.zeros((self.num_envs, self.num_dofs), device=self.device, dtype=torch.float)
         self.actions = torch.zeros((self.num_envs, self.num_actions), device=self.device, dtype=torch.float)
         self.torques = torch.zeros((self.num_envs, self.num_actions), device=self.device, dtype=torch.float)
@@ -225,6 +227,16 @@ class AllegroHandHora(VecTask):
                 obj_friction = rand_friction
             self._update_priv_buf(env_id=i, name='obj_friction', value=obj_friction, lower=0.0, upper=1.5)
 
+            if self.randomize_mass:
+                prop = self.gym.get_actor_rigid_body_properties(env_ptr, object_handle)
+                for p in prop:
+                    p.mass = np.random.uniform(self.randomize_mass_lower, self.randomize_mass_upper)
+                self.gym.set_actor_rigid_body_properties(env_ptr, object_handle, prop)
+                self._update_priv_buf(env_id=i, name='obj_mass', value=prop[0].mass, lower=0, upper=0.2)
+            else:
+                prop = self.gym.get_actor_rigid_body_properties(env_ptr, object_handle)
+                self._update_priv_buf(env_id=i, name='obj_mass', value=prop[0].mass, lower=0, upper=0.2)
+
             if self.aggregate_mode > 0:
                 self.gym.end_aggregate(env_ptr)
 
@@ -236,24 +248,6 @@ class AllegroHandHora(VecTask):
         self.object_indices = to_torch(self.object_indices, dtype=torch.long, device=self.device)
 
     def reset_idx(self, env_ids):
-        if self.randomize_mass:
-            lower, upper = self.randomize_mass_lower, self.randomize_mass_upper
-
-            for env_id in env_ids:
-                env = self.envs[env_id]
-                handle = self.gym.find_actor_handle(env, 'object')
-                prop = self.gym.get_actor_rigid_body_properties(env, handle)
-                for p in prop:
-                    p.mass = np.random.uniform(lower, upper)
-                self.gym.set_actor_rigid_body_properties(env, handle, prop)
-                self._update_priv_buf(env_id=env_id, name='obj_mass', value=prop[0].mass, lower=0, upper=0.2)
-        else:
-            for env_id in env_ids:
-                env = self.envs[env_id]
-                handle = self.gym.find_actor_handle(env, 'object')
-                prop = self.gym.get_actor_rigid_body_properties(env, handle)
-                self._update_priv_buf(env_id=env_id, name='obj_mass', value=prop[0].mass, lower=0, upper=0.2)
-
         if self.randomize_pd_gains:
             self.p_gain[env_ids] = torch_rand_float(
                 self.randomize_p_gain_lower, self.randomize_p_gain_upper, (len(env_ids), self.num_actions),
@@ -331,33 +325,36 @@ class AllegroHandHora(VecTask):
         # work and torque penalty
         torque_penalty = (self.torques ** 2).sum(-1)
         work_penalty = ((self.torques * self.dof_vel_finite_diff).sum(-1)) ** 2
-        obj_linv_pscale = self.object_linvel_penalty_scale
-        pose_diff_pscale = self.pose_diff_penalty_scale
-        torque_pscale = self.torque_penalty_scale
-        work_pscale = self.work_penalty_scale
+        # Compute offset in radians. Radians -> radians / sec
+        angdiff = quat_to_axis_angle(quat_mul(self.object_rot, quat_conjugate(self.object_rot_prev)))
+        object_angvel = angdiff / (self.control_freq_inv * self.dt)
+        vec_dot = (object_angvel * self.rot_axis_buf).sum(-1)
+        rotate_reward = torch.clip(vec_dot, max=self.angvel_clip_max, min=self.angvel_clip_min)
+        # linear velocity: use position difference instead of self.object_linvel
+        object_linvel = ((self.object_pos - self.object_pos_prev) / (self.control_freq_inv * self.dt)).clone()
+        object_linvel_penalty = torch.norm(object_linvel, p=1, dim=-1)
 
-        self.rew_buf[:], log_r_reward, olv_penalty = compute_hand_reward(
-            self.object_linvel, obj_linv_pscale,
-            self.object_angvel, self.rot_axis_buf, self.rotate_reward_scale,
-            self.angvel_clip_max, self.angvel_clip_min,
-            pose_diff_penalty, pose_diff_pscale,
-            torque_penalty, torque_pscale,
-            work_penalty, work_pscale,
+        self.rew_buf[:] = compute_hand_reward(
+            object_linvel_penalty, self.object_linvel_penalty_scale,
+            rotate_reward, self.rotate_reward_scale,
+            pose_diff_penalty, self.pose_diff_penalty_scale,
+            torque_penalty, self.torque_penalty_scale,
+            work_penalty, self.work_penalty_scale,
         )
         self.reset_buf[:] = self.check_termination(self.object_pos)
-        self.extras['rotation_reward'] = log_r_reward.mean()
-        self.extras['object_linvel_penalty'] = olv_penalty.mean()
+        self.extras['rotation_reward'] = rotate_reward.mean()
+        self.extras['object_linvel_penalty'] = object_linvel_penalty.mean()
         self.extras['pose_diff_penalty'] = pose_diff_penalty.mean()
         self.extras['work_done'] = work_penalty.mean()
         self.extras['torques'] = torque_penalty.mean()
-        self.extras['roll'] = self.object_angvel[:, 0].mean()
-        self.extras['pitch'] = self.object_angvel[:, 1].mean()
-        self.extras['yaw'] = self.object_angvel[:, 2].mean()
+        self.extras['roll'] = object_angvel[:, 0].mean()
+        self.extras['pitch'] = object_angvel[:, 1].mean()
+        self.extras['yaw'] = object_angvel[:, 2].mean()
 
         if self.evaluate:
             finished_episode_mask = self.reset_buf == 1
             self.stat_sum_rewards += self.rew_buf.sum()
-            self.stat_sum_rotate_rewards += log_r_reward.sum()
+            self.stat_sum_rotate_rewards += rotate_reward.sum()
             self.stat_sum_torques += self.torques.abs().sum()
             self.stat_sum_obj_linvel += (self.object_linvel ** 2).sum(-1).sum()
             self.stat_sum_episode_length += (self.reset_buf == 0).sum()
@@ -408,6 +405,8 @@ class AllegroHandHora(VecTask):
         targets = self.prev_targets + 1 / 24 * self.actions
         self.cur_targets[:] = tensor_clamp(targets, self.allegro_hand_dof_lower_limits, self.allegro_hand_dof_upper_limits)
         self.prev_targets[:] = self.cur_targets.clone()
+        self.object_rot_prev[:] = self.object_rot
+        self.object_pos_prev[:] = self.object_pos
 
         if self.force_scale > 0.0:
             self.rb_forces *= torch.pow(self.force_decay, self.dt / self.force_decay_interval)
@@ -618,23 +617,47 @@ class AllegroHandHora(VecTask):
 
 
 def compute_hand_reward(
-    object_linvel, object_linvel_penalty_scale: float,
-    object_angvel, rotation_axis, rotate_reward_scale: float,
-    angvel_clip_max: float, angvel_clip_min: float,
+    object_linvel_penalty, object_linvel_penalty_scale: float,
+    rotate_reward, rotate_reward_scale: float,
     pose_diff_penalty, pose_diff_penalty_scale: float,
     torque_penalty, torque_pscale: float,
     work_penalty, work_pscale: float,
 ):
-    rotate_reward_cond = (rotation_axis[:, -1] != 0).float()
-    vec_dot = (object_angvel * rotation_axis).sum(-1)
-    rotate_reward = torch.clip(vec_dot, max=angvel_clip_max, min=angvel_clip_min)
-    rotate_reward = rotate_reward_scale * rotate_reward * rotate_reward_cond
-    object_linvel_penalty = torch.norm(object_linvel, p=1, dim=-1)
-
-    reward = rotate_reward
+    reward = rotate_reward_scale * rotate_reward
     # Distance from the hand to the object
     reward = reward + object_linvel_penalty * object_linvel_penalty_scale
     reward = reward + pose_diff_penalty * pose_diff_penalty_scale
     reward = reward + torque_penalty * torque_pscale
     reward = reward + work_penalty * work_pscale
-    return reward, rotate_reward, object_linvel_penalty
+    return reward
+
+
+def quat_to_axis_angle(quaternions: torch.Tensor) -> torch.Tensor:
+    """
+    Convert rotations given as quaternions to axis/angle.
+    Adapted from PyTorch3D:
+    https://pytorch3d.readthedocs.io/en/latest/_modules/pytorch3d/transforms/rotation_conversions.html#quaternion_to_axis_angle
+    Args:
+        quaternions: quaternions with real part last,
+            as tensor of shape (..., 4).
+    Returns:
+        Rotations given as a vector in axis angle form, as a tensor
+            of shape (..., 3), where the magnitude is the angle
+            turned anticlockwise in radians around the vector's
+            direction.
+    """
+    norms = torch.norm(quaternions[..., :3], p=2, dim=-1, keepdim=True)
+    half_angles = torch.atan2(norms, quaternions[..., 3:])
+    angles = 2 * half_angles
+    eps = 1e-6
+    small_angles = angles.abs() < eps
+    sin_half_angles_over_angles = torch.empty_like(angles)
+    sin_half_angles_over_angles[~small_angles] = (
+        torch.sin(half_angles[~small_angles]) / angles[~small_angles]
+    )
+    # for x small, sin(x/2) is about x/2 - (x/2)^3/6
+    # so sin(x/2)/x is about 1/2 - (x*x)/48
+    sin_half_angles_over_angles[small_angles] = (
+        0.5 - (angles[small_angles] * angles[small_angles]) / 48
+    )
+    return quaternions[..., :3] / sin_half_angles_over_angles

@@ -199,7 +199,7 @@ class AllegroHandHora(VecTask):
                 num_scales = len(self.randomize_scale_list)
                 obj_scale = np.random.uniform(self.randomize_scale_list[i % num_scales] - 0.025, self.randomize_scale_list[i % num_scales] + 0.025)
             self.gym.set_actor_scale(env_ptr, object_handle, obj_scale)
-            self._update_priv_buf(env_id=i, name='obj_scale', value=obj_scale, lower=0.6, upper=0.9)
+            self._update_priv_buf(env_id=i, name='obj_scale', value=obj_scale)
 
             obj_com = [0, 0, 0]
             if self.randomize_com:
@@ -210,7 +210,7 @@ class AllegroHandHora(VecTask):
                            np.random.uniform(self.randomize_com_lower, self.randomize_com_upper)]
                 prop[0].com.x, prop[0].com.y, prop[0].com.z = obj_com
                 self.gym.set_actor_rigid_body_properties(env_ptr, object_handle, prop)
-            self._update_priv_buf(env_id=i, name='obj_com', value=obj_com, lower=-0.02, upper=0.02)
+            self._update_priv_buf(env_id=i, name='obj_com', value=obj_com)
 
             obj_friction = 1.0
             if self.randomize_friction:
@@ -225,17 +225,17 @@ class AllegroHandHora(VecTask):
                     p.friction = rand_friction
                 self.gym.set_actor_rigid_shape_properties(env_ptr, object_handle, object_props)
                 obj_friction = rand_friction
-            self._update_priv_buf(env_id=i, name='obj_friction', value=obj_friction, lower=0.0, upper=1.5)
+            self._update_priv_buf(env_id=i, name='obj_friction', value=obj_friction)
 
             if self.randomize_mass:
                 prop = self.gym.get_actor_rigid_body_properties(env_ptr, object_handle)
                 for p in prop:
                     p.mass = np.random.uniform(self.randomize_mass_lower, self.randomize_mass_upper)
                 self.gym.set_actor_rigid_body_properties(env_ptr, object_handle, prop)
-                self._update_priv_buf(env_id=i, name='obj_mass', value=prop[0].mass, lower=0, upper=0.2)
+                self._update_priv_buf(env_id=i, name='obj_mass', value=prop[0].mass)
             else:
                 prop = self.gym.get_actor_rigid_body_properties(env_ptr, object_handle)
-                self._update_priv_buf(env_id=i, name='obj_mass', value=prop[0].mass, lower=0, upper=0.2)
+                self._update_priv_buf(env_id=i, name='obj_mass', value=prop[0].mass)
 
             if self.aggregate_mode > 0:
                 self.gym.end_aggregate(env_ptr)

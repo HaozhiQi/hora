@@ -89,7 +89,7 @@ Visualize it by running the following command. Note that stage 1 policy refers t
 
 ```
 # s1 and s2 stands for stage 1 and 2, respectively
-ccccccccccccc
+scripts/vis_s1.sh hora_v0.0.2
 scripts/vis_s2.sh hora_v0.0.2
 ```
 

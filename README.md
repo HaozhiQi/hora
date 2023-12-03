@@ -1,6 +1,6 @@
-# In-Hand Object Rotation via Rapid Motor Adaptation
+# In-Hand Object Rotation Codebase
 
-This repository contains a reference PyTorch implementation of the paper:
+This codebase is initially built for code release of the following paper:
 
 <b>In-Hand Object Rotation via Rapid Motor Adaptation</b> <br>
 [Haozhi Qi*](https://haozhi.io/),
@@ -17,11 +17,15 @@ Conference on Robot Learning (CoRL), 2022 <br>
   <img src="https://user-images.githubusercontent.com/10141467/204687717-bb649cb5-ab0f-4450-a98b-2d40788029f6.gif" width="1000"/>
 </p>
 
+After the initial release, we are still actively building this project by adding new features and resolving previous bugs. Therefore, some of the experiment number may be inconsistent from what was reported in the above paper. Please check out version [0.0.1](https://github.com/HaozhiQi/hora/tree/v0.0.1) if you want to reproduce the numbers reported in the paper.
+
+We also maintain a [changelog and bugs](docs/changelog.md) we found during this development process.
+
 ## Disclaimer
 
 It is worth noticing that:
-1. Simulation: The method is developed and debugged using IsaacGym Preview 3.0 ([Download](https://drive.google.com/file/d/1oK-QMZ40PO60PFWWsTmtK5ToFDkbL6R0/)), IsaacGymEnvs ([e860979](https://github.com/NVIDIA-Omniverse/IsaacGymEnvs/tree/e86097999b88da28b5252be16f81c595bbb3fca5)). Versions newer than these should work, but have not been extensively tested yet.
-2. Hardware: The method is developed using an internal version of AllegroHand. We also provide a reference implementation (see the *Training the Policy* section for details) and [video results](https://haozhi.io/hora/allegro_v4) using the public AllegroHand-v4.
+1. Simulation: The repo is mainly developed and debugged using IsaacGym Preview 4.0 ([Download](https://drive.google.com/file/d/1StaRl_hzYFYbJegQcyT7-yjgutc6C7F9)). Please note the results will be inconsistent if you train with IsaacGym Preview 3.0.
+2. Hardware: The method is developed using an internal version of AllegroHand. We also provide a reference implementation (but please refer to version [0.0.1](https://github.com/HaozhiQi/hora/tree/v0.0.1) readme) and [video results](https://haozhi.io/hora/allegro_v4) using the public AllegroHand-v4.
 3. Results: The reward number in this repository are higher than what is reported in the paper. This is because we change the `reset` function order following [LeggedGym](https://github.com/leggedrobotics/legged_gym) instead of the one in [IsaacGymEnvs](https://github.com/NVIDIA-Omniverse/IsaacGymEnvs/blob/e8f1c66b24/isaacgymenvs/tasks/base/vec_task.py).
 
 ## Installation
@@ -67,8 +71,8 @@ This section can verify whether you install the repository and dependencies corr
 Download a pretrained policy:
 ```
 cd outputs/AllegroHandHora/
-gdown 1AKecNsQZ56TCyJU49DU06GxnQRbeawMu -O hora.zip
-unzip hora.zip -d ./hora
+gdown 17fr40KQcUyFXz4W1ejuLTzRqP-Qu9EPS -O hora_v0.0.2.zip
+unzip hora_v0.0.2.zip -d ./hora_v0.0.2
 cd ../../
 ```
 
@@ -76,27 +80,25 @@ The data structure should look like:
 ```
 outputs/
   AllegroHandHora/
-    hora/
+    hora_v0.0.2/
       stage1_nn/  # stage 1 checkpoints
-      stage1_tb/  # stage 1 tensorboard records
       stage2_nn/  # stage 2 checkpoints
-      stage2_tb/  # stage 2 tensorboard records
 ```
 
 Visualize it by running the following command. Note that stage 1 policy refers to the one trained with privileged object information while stage 2 policy refers to the one trained with proprioceptive history. The stage 2 policy is also what we deployed in the real-world.
 
 ```
 # s1 and s2 stands for stage 1 and 2, respectively
-scripts/vis_s1.sh hora
-scripts/vis_s2.sh hora
+scripts/vis_s1.sh hora_v0.0.2
+scripts/vis_s2.sh hora_v0.0.2
 ```
 
 Evaluate this two policies by running:
 
 ```
 # change {GPU_ID} to a valid number
-scripts/eval_s1.sh ${GPU_ID} hora
-scripts/eval_s2.sh ${GPU_ID} hora
+scripts/eval_s1.sh ${GPU_ID} hora_v0.0.2
+scripts/eval_s2.sh ${GPU_ID} hora_v0.0.2
 ```
 
 ## Training the Policy

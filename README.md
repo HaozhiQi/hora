@@ -21,6 +21,8 @@ After the initial release, we are still actively building this project by adding
 
 We also maintain a [changelog and bugs](docs/changelog.md) we found during this development process.
 
+Join our [discord](https://discord.gg/Trxzk78TQh) channel for interactive communications.
+
 ## Disclaimer
 
 It is worth noticing that:

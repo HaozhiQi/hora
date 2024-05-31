@@ -1,7 +1,7 @@
 #!/bin/bash
 GPUS=$1
 CACHE=$2
-C=outputs/AllegroHandHora/"${CACHE}"/stage2_nn/last.pth
+C=outputs/AllegroHandHora/"${CACHE}"/stage2_nn/model_last.ckpt
 CUDA_VISIBLE_DEVICES=${GPUS} \
 python train.py task=AllegroHandHora headless=True \
 task.env.numEnvs=20000 test=True task.on_evaluation=True \

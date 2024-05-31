@@ -11,4 +11,4 @@ task.env.randomization.randomizeScale=True \
 train.algo=ProprioAdapt \
 train.ppo.priv_info=True train.ppo.proprio_adapt=True \
 train.ppo.output_name=AllegroHandHora/"${CACHE}" \
-checkpoint=outputs/AllegroHandHora/"${CACHE}"/stage2_nn/last.pth
+checkpoint=outputs/AllegroHandHora/"${CACHE}"/stage2_nn/model_last.ckpt

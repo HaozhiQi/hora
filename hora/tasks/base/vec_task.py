@@ -263,13 +263,11 @@ class VecTask(Env):
 
         # step physics and render each frame
         for i in range(self.control_freq_inv):
-            self.render()
+            if self.device == 'cpu':
+                self.gym.fetch_results(self.sim, True)
             self.update_low_level_control()
             self.gym.simulate(self.sim)
-
-        # to fix!
-        if self.device == 'cpu':
-            self.gym.fetch_results(self.sim, True)
+            self.render()
 
         # fill time out buffer
         self.timeout_buf = torch.where(

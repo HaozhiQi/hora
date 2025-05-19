@@ -137,11 +137,11 @@ class ProprioAdapt(object):
 
             if self.agent_steps % 1e8 == 0:
                 self.save(os.path.join(self.nn_dir, f'{self.agent_steps // 1e8}00m'))
-                self.save(os.path.join(self.nn_dir, f'last'))
+                self.save(os.path.join(self.nn_dir, f'model_last'))
 
             mean_rewards = self.mean_eps_reward.get_mean()
             if mean_rewards > self.best_rewards:
-                self.save(os.path.join(self.nn_dir, f'best'))
+                self.save(os.path.join(self.nn_dir, f'model_best'))
                 self.best_rewards = mean_rewards
 
             all_fps = self.agent_steps / (time.time() - _t)
@@ -180,4 +180,4 @@ class ProprioAdapt(object):
             weights['running_mean_std'] = self.running_mean_std.state_dict()
         if self.sa_mean_std:
             weights['sa_mean_std'] = self.sa_mean_std.state_dict()
-        torch.save(weights, f'{name}.pth')
+        torch.save(weights, f'{name}.ckpt')

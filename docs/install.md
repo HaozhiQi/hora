@@ -15,11 +15,11 @@ conda install pytorch==1.10.1 torchvision==0.11.2 torchaudio==0.10.1 cudatoolkit
 
 ## IsaacGym
 
-Download IsaacGym Preview 3.0 ([Download](https://drive.google.com/file/d/1oK-QMZ40PO60PFWWsTmtK5ToFDkbL6R0/)), then follow the installation instructions in the documentation. We provide the bash commands what we did during development.
+Download IsaacGym Preview 4.0 ([Download](https://drive.google.com/file/d/1StaRl_hzYFYbJegQcyT7-yjgutc6C7F9/)), then follow the installation instructions in the documentation. We provide the bash commands what we did during development.
 
 ```
-gdown 1oK-QMZ40PO60PFWWsTmtK5ToFDkbL6R0 -O isaac3.tar.gz
-tar -xzvf isaac3.tar.gz
+gdown 1StaRl_hzYFYbJegQcyT7-yjgutc6C7F9 -O isaac4.tar.gz
+tar -xzvf isaac4.tar.gz
 cd isaacgym/python
 pip install -e .
 ```

@@ -101,8 +101,8 @@ class HardwarePlayer(object):
         cur_obs_buf = unscale(obses, self.allegro_dof_lower, self.allegro_dof_upper)[None]
 
         for i in range(3):
-            obs_buf[:, i*16+0:i*16+16] = cur_obs_buf.clone()  # joint position
-            obs_buf[:, i*16+16:i*16+32] = prev_target.clone()  # current target (obs_t-1 + s * act_t-1)
+            obs_buf[:, i*32:i*32+16] = cur_obs_buf.clone() # joint position
+            obs_buf[:, i*32+16:i*32+32] = prev_target.clone() # current target (obs_t-1 + s * act_t-1)
 
         proprio_hist_buf[:, :, :16] = cur_obs_buf.clone()
         proprio_hist_buf[:, :, 16:32] = prev_target.clone()

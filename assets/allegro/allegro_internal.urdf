@@ -169,10 +169,9 @@ and one fixed link will be added for the tip. -->
   <link name="link_3.0_tip">
     <visual>
       <geometry>
-        <sphere radius="0.01235"/>
+        <mesh filename="allegro/meshes/allegro/digitv2.obj"/>
       </geometry>
-      <!-- z: 0.02 0.05 0.035 0.04 0.038 0.0375 0.037-->
-      <origin rpy="0 0 0" xyz="0.000 0.000 0.0368" />
+      <origin rpy="0 0 0" xyz="0.000 0.000 0.0" />
       <material name="white">
         <color rgba=".9 .9 .9 1"/>
       </material>
@@ -316,10 +315,9 @@ and one fixed link will be added for the tip. -->
   <link name="link_7.0_tip">
     <visual>
       <geometry>
-        <sphere radius="0.01235"/>
+        <mesh filename="allegro/meshes/allegro/digitv2.obj"/>
       </geometry>
-      <!-- z: 0.02 0.05 0.035 0.04 0.038 0.0375 0.037-->
-      <origin rpy="0 0 0" xyz="0.000 0.000 0.0368" />
+      <origin rpy="0 0 0" xyz="0.000 0.000 0.0" />
       <material name="white">
         <color rgba=".9 .9 .9 1"/>
       </material>
@@ -463,10 +461,9 @@ and one fixed link will be added for the tip. -->
   <link name="link_11.0_tip">
     <visual>
       <geometry>
-        <sphere radius="0.01235"/>
+        <mesh filename="allegro/meshes/allegro/digitv2.obj"/>
       </geometry>
-      <!-- z: 0.02 0.05 0.035 0.04 0.038 0.0375 0.037-->
-      <origin rpy="0 0 0" xyz="0.000 0.000 0.0368" />
+      <origin rpy="0 0 0" xyz="0.000 0.000 0.0" />
       <material name="white">
         <color rgba=".9 .9 .9 1"/>
       </material>
@@ -627,10 +624,9 @@ and one fixed link will be added for the tip. -->
   <link name="link_15.0_tip">
     <visual>
       <geometry>
-        <sphere radius="0.01235"/>
+        <mesh filename="allegro/meshes/allegro/digitv2.obj"/>
       </geometry>
-      <!-- z: 0.02 0.05 0.035 0.04 0.038 0.0375 0.037-->
-      <origin rpy="0 0 0" xyz="0.000 0.000 0.0368" />
+      <origin rpy="0 0 0" xyz="0.000 0.000 0.0" />
       <material name="white">
         <color rgba=".9 .9 .9 1"/>
       </material>

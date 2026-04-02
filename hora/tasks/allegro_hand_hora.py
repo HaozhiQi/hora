@@ -414,7 +414,7 @@ class AllegroHandHora(VecTask):
                 if self.point_cloud_sampled_dim > 0:
                     self._draw_point_cloud(i)
 
-    def _draw_point_cloud(self, env_idx, offset_y=0.3):
+    def _draw_point_cloud(self, env_idx, offset_y=0.1):
         """Draw point cloud as small cross-hairs in the viewer, offset to the side."""
         offset = to_torch([0, offset_y, 0], device=self.device)
         pc = self.point_cloud_buf[env_idx] + self.object_pos[env_idx] + offset

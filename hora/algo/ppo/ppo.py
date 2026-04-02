@@ -41,6 +41,9 @@ class PPO(object):
         self.priv_info_dim = self.ppo_config['priv_info_dim']
         self.priv_info = self.ppo_config['priv_info']
         self.proprio_adapt = self.ppo_config['proprio_adapt']
+        # ---- Point Cloud ----
+        self.point_cloud_sampled_dim = self.ppo_config['point_cloud_sampled_dim']
+        self.normalize_point_cloud = self.ppo_config['normalize_point_cloud']
         # ---- Model ----
         net_config = {
             'actor_units': self.network_config.mlp.units,
@@ -50,11 +53,15 @@ class PPO(object):
             'priv_info': self.priv_info,
             'proprio_adapt': self.proprio_adapt,
             'priv_info_dim': self.priv_info_dim,
+            'point_cloud_sampled_dim': self.point_cloud_sampled_dim,
+            'point_mlp_units': list(self.ppo_config['point_mlp_units']),
         }
         self.model = ActorCritic(net_config)
         self.model.to(self.device)
         self.running_mean_std = RunningMeanStd(self.obs_shape).to(self.device)
         self.value_mean_std = RunningMeanStd((1,)).to(self.device)
+        if self.point_cloud_sampled_dim > 0:
+            self.point_cloud_mean_std = RunningMeanStd((3,)).to(self.device)
         # ---- Output Dir ----
         # allows us to specify a folder where all experiments will reside
         self.output_dir = output_dif
@@ -104,6 +111,7 @@ class PPO(object):
         self.storage = ExperienceBuffer(
             self.num_actors, self.horizon_length, self.batch_size, self.minibatch_size, self.obs_shape[0],
             self.actions_num, self.priv_info_dim, self.device,
+            point_cloud_dim=self.point_cloud_sampled_dim,
         )
 
         batch_size = self.num_actors
@@ -141,6 +149,8 @@ class PPO(object):
             self.running_mean_std.eval()
         if self.normalize_value:
             self.value_mean_std.eval()
+        if self.point_cloud_sampled_dim > 0 and self.normalize_point_cloud:
+            self.point_cloud_mean_std.eval()
 
     def set_train(self):
         self.model.train()
@@ -148,6 +158,8 @@ class PPO(object):
             self.running_mean_std.train()
         if self.normalize_value:
             self.value_mean_std.train()
+        if self.point_cloud_sampled_dim > 0 and self.normalize_point_cloud:
+            self.point_cloud_mean_std.train()
 
     def model_act(self, obs_dict):
         processed_obs = self.running_mean_std(obs_dict['obs'])
@@ -155,6 +167,12 @@ class PPO(object):
             'obs': processed_obs,
             'priv_info': obs_dict['priv_info'],
         }
+        if self.point_cloud_sampled_dim > 0:
+            pc = obs_dict['point_cloud_info']
+            if self.normalize_point_cloud:
+                n, p, _ = pc.shape
+                pc = self.point_cloud_mean_std(pc.reshape(-1, 3)).reshape(n, p, 3)
+            input_dict['point_cloud_info'] = pc
         res_dict = self.model.act(input_dict)
         res_dict['values'] = self.value_mean_std(res_dict['values'], True)
         return res_dict
@@ -208,6 +226,8 @@ class PPO(object):
             weights['running_mean_std'] = self.running_mean_std.state_dict()
         if self.value_mean_std:
             weights['value_mean_std'] = self.value_mean_std.state_dict()
+        if self.point_cloud_sampled_dim > 0 and self.normalize_point_cloud:
+            weights['point_cloud_mean_std'] = self.point_cloud_mean_std.state_dict()
         torch.save(weights, f'{name}.pth')
 
     def restore_train(self, fn):
@@ -216,12 +236,16 @@ class PPO(object):
         checkpoint = torch.load(fn)
         self.model.load_state_dict(checkpoint['model'])
         self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
+        if self.point_cloud_sampled_dim > 0 and self.normalize_point_cloud and 'point_cloud_mean_std' in checkpoint:
+            self.point_cloud_mean_std.load_state_dict(checkpoint['point_cloud_mean_std'])
 
     def restore_test(self, fn):
         checkpoint = torch.load(fn)
         self.model.load_state_dict(checkpoint['model'])
         if self.normalize_input:
             self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
+        if self.point_cloud_sampled_dim > 0 and self.normalize_point_cloud and 'point_cloud_mean_std' in checkpoint:
+            self.point_cloud_mean_std.load_state_dict(checkpoint['point_cloud_mean_std'])
 
     def test(self):
         self.set_eval()
@@ -231,6 +255,12 @@ class PPO(object):
                 'obs': self.running_mean_std(obs_dict['obs']),
                 'priv_info': obs_dict['priv_info'],
             }
+            if self.point_cloud_sampled_dim > 0:
+                pc = obs_dict['point_cloud_info']
+                if self.normalize_point_cloud:
+                    n, p, _ = pc.shape
+                    pc = self.point_cloud_mean_std(pc.reshape(-1, 3)).reshape(n, p, 3)
+                input_dict['point_cloud_info'] = pc
             mu = self.model.act_inference(input_dict)
             mu = torch.clamp(mu, -1.0, 1.0)
             obs_dict, r, done, info = self.env.step(mu)
@@ -250,7 +280,7 @@ class PPO(object):
             ep_kls = []
             for i in range(len(self.storage)):
                 value_preds, old_action_log_probs, advantage, old_mu, old_sigma, \
-                    returns, actions, obs, priv_info = self.storage[i]
+                    returns, actions, obs, priv_info, point_cloud_info = self.storage[i]
 
                 obs = self.running_mean_std(obs)
                 batch_dict = {
@@ -258,6 +288,13 @@ class PPO(object):
                     'obs': obs,
                     'priv_info': priv_info,
                 }
+                if self.point_cloud_sampled_dim > 0:
+                    if self.normalize_point_cloud:
+                        n, p, _ = point_cloud_info.shape
+                        point_cloud_info = self.point_cloud_mean_std(
+                            point_cloud_info.reshape(-1, 3)
+                        ).reshape(n, p, 3)
+                    batch_dict['point_cloud_info'] = point_cloud_info
                 res_dict = self.model(batch_dict)
                 action_log_probs = res_dict['prev_neglogp']
                 values = res_dict['values']
@@ -321,6 +358,8 @@ class PPO(object):
             # collect o_t
             self.storage.update_data('obses', n, self.obs['obs'])
             self.storage.update_data('priv_info', n, self.obs['priv_info'])
+            if self.point_cloud_sampled_dim > 0:
+                self.storage.update_data('point_cloud_info', n, self.obs['point_cloud_info'])
             for k in ['actions', 'neglogpacs', 'values', 'mus', 'sigmas']:
                 self.storage.update_data(k, n, res_dict[k])
             # do env step

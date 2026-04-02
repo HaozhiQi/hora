@@ -8,11 +8,13 @@
 import os
 import torch
 import numpy as np
+import xml.etree.ElementTree as ET
 from isaacgym import gymtorch
 from isaacgym import gymapi
 from isaacgym.torch_utils import to_torch, unscale, quat_apply, tensor_clamp, torch_rand_float, quat_conjugate, quat_mul
 from glob import glob
 from hora.utils.misc import tprint
+from hora.utils.point_cloud_prep import sample_cylinder
 from .base.vec_task import VecTask
 
 
@@ -164,6 +166,7 @@ class AllegroHandHora(VecTask):
 
         self.hand_indices = []
         self.object_indices = []
+        self.obj_point_clouds = []
 
         allegro_hand_rb_count = self.gym.get_asset_rigid_body_count(self.hand_asset)
         object_rb_count = 1
@@ -200,6 +203,10 @@ class AllegroHandHora(VecTask):
                 obj_scale = np.random.uniform(self.randomize_scale_list[i % num_scales] - 0.025, self.randomize_scale_list[i % num_scales] + 0.025)
             self.gym.set_actor_scale(env_ptr, object_handle, obj_scale)
             self._update_priv_buf(env_id=i, name='obj_scale', value=obj_scale)
+            if self.point_cloud_sampled_dim > 0 and self.asset_point_clouds[object_type_id] is not None:
+                self.obj_point_clouds.append(self.asset_point_clouds[object_type_id] * obj_scale)
+            elif self.point_cloud_sampled_dim > 0:
+                self.obj_point_clouds.append(np.zeros((self.point_cloud_sampled_dim, 3)))
 
             obj_com = [0, 0, 0]
             if self.randomize_com:
@@ -246,6 +253,8 @@ class AllegroHandHora(VecTask):
         self.object_rb_handles = to_torch(self.object_rb_handles, dtype=torch.long, device=self.device)
         self.hand_indices = to_torch(self.hand_indices, dtype=torch.long, device=self.device)
         self.object_indices = to_torch(self.object_indices, dtype=torch.long, device=self.device)
+        if self.point_cloud_sampled_dim > 0:
+            self.obj_point_clouds = to_torch(np.array(self.obj_point_clouds), device=self.device, dtype=torch.float)
 
     def reset_idx(self, env_ids):
         if self.randomize_pd_gains:
@@ -317,6 +326,13 @@ class AllegroHandHora(VecTask):
 
         self.proprio_hist_buf[:] = self.obs_buf_lag_history[:, -self.prop_hist_len:].clone()
         self._update_priv_buf(env_id=range(self.num_envs), name='obj_position', value=self.object_pos.clone())
+
+        if self.point_cloud_sampled_dim > 0:
+            # rotate canonical point clouds by current object orientation
+            self.point_cloud_buf[:] = quat_apply(
+                self.object_rot[:, None].repeat(1, self.point_cloud_sampled_dim, 1),
+                self.obj_point_clouds,
+            )
 
     def compute_reward(self, actions):
         self.rot_axis_buf[:, -1] = -1
@@ -395,6 +411,25 @@ class AllegroHandHora(VecTask):
                 self.gym.add_lines(self.viewer, self.envs[i], 1, [p0[0], p0[1], p0[2], objecty[0], objecty[1], objecty[2]], [0.1, 0.85, 0.1])
                 self.gym.add_lines(self.viewer, self.envs[i], 1, [p0[0], p0[1], p0[2], objectz[0], objectz[1], objectz[2]], [0.1, 0.1, 0.85])
 
+                if self.point_cloud_sampled_dim > 0:
+                    self._draw_point_cloud(i)
+
+    def _draw_point_cloud(self, env_idx, offset_y=0.3):
+        """Draw point cloud as small cross-hairs in the viewer, offset to the side."""
+        offset = to_torch([0, offset_y, 0], device=self.device)
+        pc = self.point_cloud_buf[env_idx] + self.object_pos[env_idx] + offset
+        n = self.point_cloud_sampled_dim
+        eps = 0.002
+        # build 3 line segments per point (cross-hair along x, y, z)
+        starts = pc.unsqueeze(0).repeat(3, 1, 1)  # (3, N, 3)
+        ends = starts.clone()
+        ends[0, :, 0] += eps
+        ends[1, :, 1] += eps
+        ends[2, :, 2] += eps
+        lines = torch.cat([starts.reshape(-1, 3), ends.reshape(-1, 3)], dim=1)  # (3*N, 6)
+        colors = np.tile([1.0, 1.0, 0.0], (n * 3, 1)).astype(np.float32)  # yellow
+        self.gym.add_lines(self.viewer, self.envs[env_idx], n * 3, lines.cpu().numpy(), colors)
+
     def _create_ground_plane(self):
         plane_params = gymapi.PlaneParams()
         plane_params.normal = gymapi.Vec3(0.0, 0.0, 1.0)
@@ -425,12 +460,14 @@ class AllegroHandHora(VecTask):
         super().reset()
         self.obs_dict['priv_info'] = self.priv_info_buf.to(self.rl_device)
         self.obs_dict['proprio_hist'] = self.proprio_hist_buf.to(self.rl_device)
+        self.obs_dict['point_cloud_info'] = self.point_cloud_buf.to(self.rl_device)
         return self.obs_dict
 
     def step(self, actions):
         super().step(actions)
         self.obs_dict['priv_info'] = self.priv_info_buf.to(self.rl_device)
         self.obs_dict['proprio_hist'] = self.proprio_hist_buf.to(self.rl_device)
+        self.obs_dict['point_cloud_info'] = self.point_cloud_buf.to(self.rl_device)
         return self.obs_dict, self.rew_buf, self.reset_buf, self.extras
 
     def update_low_level_control(self):
@@ -551,6 +588,11 @@ class AllegroHandHora(VecTask):
         self.num_env_factors = self.config['env']['hora']['privInfoDim']
         self.priv_info_buf = torch.zeros((num_envs, self.num_env_factors), device=self.device, dtype=torch.float)
         self.proprio_hist_buf = torch.zeros((num_envs, self.prop_hist_len, 32), device=self.device, dtype=torch.float)
+        # point cloud buffers
+        self.point_cloud_sampled_dim = self.config['env']['hora']['pointCloudSampledDim']
+        self.point_cloud_buf = torch.zeros(
+            (num_envs, self.point_cloud_sampled_dim, 3), device=self.device, dtype=torch.float
+        )
 
     def _setup_reward_config(self, r_config):
         self.angvel_clip_min = r_config['angvelClipMin']
@@ -582,11 +624,25 @@ class AllegroHandHora(VecTask):
 
         # load object asset
         self.object_asset_list = []
+        self.asset_point_clouds = []
         for object_type in self.object_type_list:
             object_asset_file = self.asset_files_dict[object_type]
             object_asset_options = gymapi.AssetOptions()
             object_asset = self.gym.load_asset(self.sim, asset_root, object_asset_file, object_asset_options)
             self.object_asset_list.append(object_asset)
+            # generate point cloud for this asset
+            if self.point_cloud_sampled_dim > 0 and 'cylin' in object_type:
+                urdf_path = os.path.join(asset_root, object_asset_file)
+                root = ET.parse(urdf_path).getroot()
+                geom = root.find('.//collision/geometry/cylinder')
+                radius = float(geom.attrib['radius'])
+                length = float(geom.attrib['length'])
+                # sample_cylinder uses unit radius (0.5), so h = length / (2 * radius)
+                h = length / (2 * radius)
+                pcs = sample_cylinder(h, num_points=self.point_cloud_sampled_dim) * (2 * radius)
+                self.asset_point_clouds.append(pcs)
+            else:
+                self.asset_point_clouds.append(None)
 
     def _init_object_pose(self):
         allegro_hand_start_pose = gymapi.Transform()

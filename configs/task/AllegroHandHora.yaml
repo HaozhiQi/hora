@@ -36,6 +36,7 @@ env:
   hora:
     propHistoryLen: 30
     privInfoDim: 9
+    pointCloudSampledDim: 0
 
   reward:
     angvelClipMin: -0.5

@@ -41,3 +41,6 @@ ppo:
   priv_info_dim: 9
   priv_info_embed_dim: 8
   proprio_adapt: False
+  point_cloud_sampled_dim: ${...task.env.hora.pointCloudSampledDim}
+  normalize_point_cloud: True
+  point_mlp_units: [32, 32]

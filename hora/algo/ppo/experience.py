@@ -26,11 +26,13 @@ def transform_op(arr):
 
 
 class ExperienceBuffer(Dataset):
-    def __init__(self, num_envs, horizon_length, batch_size, minibatch_size, obs_dim, act_dim, priv_dim, device):
+    def __init__(self, num_envs, horizon_length, batch_size, minibatch_size, obs_dim, act_dim, priv_dim,
+                 device, point_cloud_dim=0):
         self.device = device
         self.num_envs = num_envs
         self.transitions_per_env = horizon_length
         self.priv_info_dim = priv_dim
+        self.point_cloud_dim = point_cloud_dim
 
         self.data_dict = None
         self.obs_dim = obs_dim
@@ -48,6 +50,11 @@ class ExperienceBuffer(Dataset):
             'sigmas': torch.zeros((self.transitions_per_env, self.num_envs, self.act_dim), dtype=torch.float32, device=self.device),
             'returns': torch.zeros((self.transitions_per_env, self.num_envs,  1), dtype=torch.float32, device=self.device),
         }
+        if self.point_cloud_dim > 0:
+            self.storage_dict['point_cloud_info'] = torch.zeros(
+                (self.transitions_per_env, self.num_envs, self.point_cloud_dim, 3),
+                dtype=torch.float32, device=self.device,
+            )
 
         self.batch_size = batch_size
         self.minibatch_size = minibatch_size
@@ -67,9 +74,10 @@ class ExperienceBuffer(Dataset):
                 input_dict[k] = v_dict
             else:
                 input_dict[k] = v[start:end]
+        point_cloud_info = input_dict.get('point_cloud_info', None)
         return input_dict['values'], input_dict['neglogpacs'], input_dict['advantages'], input_dict['mus'], \
             input_dict['sigmas'], input_dict['returns'], input_dict['actions'], \
-            input_dict['obses'], input_dict['priv_info']
+            input_dict['obses'], input_dict['priv_info'], point_cloud_info
 
     def update_mu_sigma(self, mu, sigma):
         start = self.last_range[0]

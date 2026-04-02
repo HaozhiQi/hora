@@ -34,6 +34,9 @@ class ProprioAdapt(object):
         self.priv_info_dim = self.ppo_config['priv_info_dim']
         self.proprio_adapt = self.ppo_config['proprio_adapt']
         self.proprio_hist_dim = self.env.prop_hist_len
+        # ---- Point Cloud ----
+        self.point_cloud_sampled_dim = self.ppo_config['point_cloud_sampled_dim']
+        self.normalize_point_cloud = self.ppo_config['normalize_point_cloud']
         # ---- Model ----
         net_config = {
             'actor_units': self.network_config.mlp.units,
@@ -43,6 +46,8 @@ class ProprioAdapt(object):
             'priv_info': self.priv_info,
             'proprio_adapt': self.proprio_adapt,
             'priv_info_dim': self.priv_info_dim,
+            'point_cloud_sampled_dim': self.point_cloud_sampled_dim,
+            'point_mlp_units': list(self.ppo_config['point_mlp_units']),
         }
         self.model = ActorCritic(net_config)
         self.model.to(self.device)
@@ -51,6 +56,9 @@ class ProprioAdapt(object):
         self.running_mean_std.eval()
         self.sa_mean_std = RunningMeanStd((self.proprio_hist_dim, 32)).to(self.device)
         self.sa_mean_std.train()
+        if self.point_cloud_sampled_dim > 0:
+            self.point_cloud_mean_std = RunningMeanStd((3,)).to(self.device)
+            self.point_cloud_mean_std.eval()
         # ---- Output Dir ----
         self.output_dir = output_dir
         self.nn_dir = os.path.join(self.output_dir, 'stage2_nn')
@@ -86,6 +94,16 @@ class ProprioAdapt(object):
         self.model.eval()
         self.running_mean_std.eval()
         self.sa_mean_std.eval()
+        if self.point_cloud_sampled_dim > 0 and self.normalize_point_cloud:
+            self.point_cloud_mean_std.eval()
+
+    def _normalize_point_cloud(self, pc):
+        if self.point_cloud_sampled_dim > 0:
+            if self.normalize_point_cloud:
+                n, p, _ = pc.shape
+                pc = self.point_cloud_mean_std(pc.reshape(-1, 3)).reshape(n, p, 3)
+            return pc
+        return None
 
     def test(self):
         self.set_eval()
@@ -111,6 +129,8 @@ class ProprioAdapt(object):
                 'priv_info': obs_dict['priv_info'],
                 'proprio_hist': self.sa_mean_std(obs_dict['proprio_hist'].detach()),
             }
+            if self.point_cloud_sampled_dim > 0:
+                input_dict['point_cloud_info'] = self._normalize_point_cloud(obs_dict['point_cloud_info'])
             mu, _, _, e, e_gt = self.model._actor_critic(input_dict)
             loss = ((e - e_gt.detach()) ** 2).mean()
             self.optim.zero_grad()
@@ -163,6 +183,8 @@ class ProprioAdapt(object):
         cprint('careful, using non-strict matching', 'red', attrs=['bold'])
         self.model.load_state_dict(checkpoint['model'], strict=False)
         self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
+        if self.point_cloud_sampled_dim > 0 and self.normalize_point_cloud and 'point_cloud_mean_std' in checkpoint:
+            self.point_cloud_mean_std.load_state_dict(checkpoint['point_cloud_mean_std'])
 
     def restore_test(self, fn):
         if not fn:
@@ -171,6 +193,8 @@ class ProprioAdapt(object):
         self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
         self.model.load_state_dict(checkpoint['model'])
         self.sa_mean_std.load_state_dict(checkpoint['sa_mean_std'])
+        if self.point_cloud_sampled_dim > 0 and self.normalize_point_cloud and 'point_cloud_mean_std' in checkpoint:
+            self.point_cloud_mean_std.load_state_dict(checkpoint['point_cloud_mean_std'])
 
     def save(self, name):
         weights = {
@@ -180,4 +204,6 @@ class ProprioAdapt(object):
             weights['running_mean_std'] = self.running_mean_std.state_dict()
         if self.sa_mean_std:
             weights['sa_mean_std'] = self.sa_mean_std.state_dict()
+        if self.point_cloud_sampled_dim > 0 and self.normalize_point_cloud:
+            weights['point_cloud_mean_std'] = self.point_cloud_mean_std.state_dict()
         torch.save(weights, f'{name}.ckpt')

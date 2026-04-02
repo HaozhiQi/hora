@@ -64,9 +64,15 @@ class ActorCritic(nn.Module):
         out_size = self.units[-1]
         self.priv_info = kwargs['priv_info']
         self.priv_info_stage2 = kwargs['proprio_adapt']
+        self.use_point_cloud = kwargs.get('point_cloud_sampled_dim', 0) > 0
         if self.priv_info:
             mlp_input_shape += self.priv_mlp[-1]
             self.env_mlp = MLP(units=self.priv_mlp, input_size=kwargs['priv_info_dim'])
+
+            if self.use_point_cloud:
+                point_mlp_units = kwargs['point_mlp_units']
+                mlp_input_shape += point_mlp_units[-1]
+                self.point_mlp = MLP(units=point_mlp_units, input_size=3)
 
             if self.priv_info_stage2:
                 self.adapt_tconv = ProprioAdaptTConv()
@@ -123,6 +129,10 @@ class ActorCritic(nn.Module):
                 obs = torch.cat([obs, extrin], dim=-1)
             else:
                 extrin = self.env_mlp(obs_dict['priv_info'])
+                if self.use_point_cloud:
+                    pcs = self.point_mlp(obs_dict['point_cloud_info'])
+                    pcs = torch.max(pcs, 1)[0]
+                    extrin = torch.cat([extrin, pcs], dim=-1)
                 extrin = torch.tanh(extrin)
                 obs = torch.cat([obs, extrin], dim=-1)
 

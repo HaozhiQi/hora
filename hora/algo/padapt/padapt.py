@@ -37,6 +37,8 @@ class ProprioAdapt(object):
         # ---- Point Cloud ----
         self.point_cloud_sampled_dim = self.ppo_config['point_cloud_sampled_dim']
         self.normalize_point_cloud = self.ppo_config['normalize_point_cloud']
+        # ---- Depth / Visual Distillation ----
+        self.visual_distillation = self.ppo_config.get('visual_distillation', False)
         # ---- Model ----
         net_config = {
             'actor_units': self.network_config.mlp.units,
@@ -48,6 +50,7 @@ class ProprioAdapt(object):
             'priv_info_dim': self.priv_info_dim,
             'point_cloud_sampled_dim': self.point_cloud_sampled_dim,
             'point_mlp_units': list(self.ppo_config['point_mlp_units']),
+            'visual_distillation': self.visual_distillation,
         }
         self.model = ActorCritic(net_config)
         self.model.to(self.device)
@@ -61,8 +64,11 @@ class ProprioAdapt(object):
             self.point_cloud_mean_std.eval()
         # ---- Output Dir ----
         self.output_dir = output_dir
-        self.nn_dir = os.path.join(self.output_dir, 'stage2_nn')
-        self.tb_dir = os.path.join(self.output_dir, 'stage2_tb')
+        s2_suffix = self.ppo_config.get('s2_cache_suffix', '')
+        s2_tag = f'stage2_nn_{s2_suffix}' if s2_suffix else 'stage2_nn'
+        s2_tb_tag = f'stage2_tb_{s2_suffix}' if s2_suffix else 'stage2_tb'
+        self.nn_dir = os.path.join(self.output_dir, s2_tag)
+        self.tb_dir = os.path.join(self.output_dir, s2_tb_tag)
         os.makedirs(self.nn_dir, exist_ok=True)
         os.makedirs(self.tb_dir, exist_ok=True)
         writer = SummaryWriter(self.tb_dir)
@@ -77,7 +83,7 @@ class ProprioAdapt(object):
         # ---- Optim ----
         adapt_params = []
         for name, p in self.model.named_parameters():
-            if 'adapt_tconv' in name:
+            if 'adapt_tconv' in name or 'depth_conv' in name:
                 adapt_params.append(p)
             else:
                 p.requires_grad = False
@@ -113,6 +119,8 @@ class ProprioAdapt(object):
                 'obs': self.running_mean_std(obs_dict['obs']),
                 'proprio_hist': self.sa_mean_std(obs_dict['proprio_hist'].detach()),
             }
+            if self.visual_distillation and 'depth_buf' in obs_dict:
+                input_dict['depth_buf'] = obs_dict['depth_buf']
             mu = self.model.act_inference(input_dict)
             mu = torch.clamp(mu, -1.0, 1.0)
             obs_dict, r, done, info = self.env.step(mu)
@@ -131,6 +139,8 @@ class ProprioAdapt(object):
             }
             if self.point_cloud_sampled_dim > 0:
                 input_dict['point_cloud_info'] = self._normalize_point_cloud(obs_dict['point_cloud_info'])
+            if self.visual_distillation:
+                input_dict['depth_buf'] = obs_dict['depth_buf']
             mu, _, _, e, e_gt = self.model._actor_critic(input_dict)
             loss = ((e - e_gt.detach()) ** 2).mean()
             self.optim.zero_grad()

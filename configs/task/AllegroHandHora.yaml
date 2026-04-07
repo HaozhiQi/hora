@@ -38,6 +38,27 @@ env:
     privInfoDim: 9
     pointCloudSampledDim: 0
 
+  depthCamera:
+    enable: False
+    cameraWidth: 80
+    cameraHeight: 60
+    bufferWidth: 40
+    bufferHeight: 40
+    # camera extrinsic/intrinsic randomization (per env, fixed at creation)
+    randomizeFov: True
+    randomizeFovLow: 70
+    randomizeFovHigh: 76
+    randomizePose: True
+    randomizePosePStd: 0.01
+    randomizePoseRStd: 0.03
+    # depth value noise
+    depthNoiseTScale: 0.01  # per-frame temporal noise std
+    depthNoiseEScale: 0.02  # per-episode fixed noise std
+    # segmentation noise
+    segDropoutRatio: 0.1    # probability of dropping foreground pixels
+    segDisturbRatio: 0.02   # probability of false positive on background
+    segFailureRatio: 0.05   # probability of entire frame failure
+
   reward:
     angvelClipMin: -0.5
     angvelClipMax: 0.5

@@ -11,7 +11,7 @@ import numpy as np
 import xml.etree.ElementTree as ET
 from isaacgym import gymtorch
 from isaacgym import gymapi
-from isaacgym.torch_utils import to_torch, unscale, quat_apply, tensor_clamp, torch_rand_float, quat_conjugate, quat_mul
+from isaacgym.torch_utils import to_torch, unscale, quat_apply, tensor_clamp, torch_rand_float, quat_conjugate, quat_mul, quat_from_euler_xyz
 from glob import glob
 from hora.utils.misc import tprint
 from hora.utils.point_cloud_prep import sample_cylinder
@@ -37,6 +37,28 @@ class AllegroHandHora(VecTask):
         self.reset_z_threshold = self.config['env']['reset_height_threshold']
         self.grasp_cache_name = self.config['env']['grasp_cache_name']
         self.evaluate = self.config['on_evaluation']
+        # depth camera config (must be before super().__init__)
+        depth_cam_cfg = config['env'].get('depthCamera', {})
+        self.enable_depth_camera = depth_cam_cfg.get('enable', False)
+        if self.enable_depth_camera:
+            config['enableCameraSensors'] = True
+            self.depth_cam_width = depth_cam_cfg.get('cameraWidth', 80)
+            self.depth_cam_height = depth_cam_cfg.get('cameraHeight', 60)
+            self.depth_buf_width = depth_cam_cfg.get('bufferWidth', 40)
+            self.depth_buf_height = depth_cam_cfg.get('bufferHeight', 40)
+            self.randomize_camera_fov = depth_cam_cfg.get('randomizeFov', False)
+            self.randomize_camera_fov_low = depth_cam_cfg.get('randomizeFovLow', 70)
+            self.randomize_camera_fov_high = depth_cam_cfg.get('randomizeFovHigh', 76)
+            self.randomize_camera_pose = depth_cam_cfg.get('randomizePose', False)
+            self.randomize_camera_p_std = depth_cam_cfg.get('randomizePosePStd', 0.01)
+            self.randomize_camera_r_std = depth_cam_cfg.get('randomizePoseRStd', 0.03)
+            # depth value noise
+            self.depth_noise_t_scale = depth_cam_cfg.get('depthNoiseTScale', 0.01)
+            self.depth_noise_e_scale = depth_cam_cfg.get('depthNoiseEScale', 0.02)
+            # segmentation noise
+            self.seg_dropout_ratio = depth_cam_cfg.get('segDropoutRatio', 0.2)
+            self.seg_disturb_ratio = depth_cam_cfg.get('segDisturbRatio', 0.02)
+            self.seg_failure_ratio = depth_cam_cfg.get('segFailureRatio', 0.05)
         self.priv_info_dict = {
             'obj_position': (0, 3),
             'obj_scale': (3, 4),
@@ -46,6 +68,20 @@ class AllegroHandHora(VecTask):
         }
 
         super().__init__(config, sim_device, graphics_device_id, headless)
+
+        # Acquire depth camera GPU tensors (must happen after prepare_sim)
+        if self.enable_depth_camera:
+            self.depth_tensors = []
+            self.seg_tensors = []
+            for i in range(self.num_envs):
+                depth_tensor = self.gym.get_camera_image_gpu_tensor(
+                    self.sim, self.envs[i], self.camera_handles[i], gymapi.IMAGE_DEPTH
+                )
+                seg_tensor = self.gym.get_camera_image_gpu_tensor(
+                    self.sim, self.envs[i], self.camera_handles[i], gymapi.IMAGE_SEGMENTATION
+                )
+                self.depth_tensors.append(gymtorch.wrap_tensor(depth_tensor))
+                self.seg_tensors.append(gymtorch.wrap_tensor(seg_tensor))
 
         self.debug_viz = self.config['env']['enableDebugVis']
         self.max_episode_length = self.config['env']['episodeLength']
@@ -161,6 +197,8 @@ class AllegroHandHora(VecTask):
         max_agg_shapes = self.num_allegro_hand_shapes + 2
 
         self.envs = []
+        if self.enable_depth_camera:
+            self.camera_handles = []
 
         self.object_init_state = []
 
@@ -179,7 +217,7 @@ class AllegroHandHora(VecTask):
                 self.gym.begin_aggregate(env_ptr, max_agg_bodies * 20, max_agg_shapes * 20, True)
 
             # add hand - collision filter = -1 to use asset collision filters set in mjcf loader
-            hand_actor = self.gym.create_actor(env_ptr, self.hand_asset, hand_pose, 'hand', i, -1, 0)
+            hand_actor = self.gym.create_actor(env_ptr, self.hand_asset, hand_pose, 'hand', i, -1, 1)
             self.gym.set_actor_dof_properties(env_ptr, hand_actor, allegro_hand_dof_props)
             hand_idx = self.gym.get_actor_index(env_ptr, hand_actor, gymapi.DOMAIN_SIM)
             self.hand_indices.append(hand_idx)
@@ -188,7 +226,7 @@ class AllegroHandHora(VecTask):
             object_type_id = np.random.choice(len(self.object_type_list), p=self.object_type_prob)
             object_asset = self.object_asset_list[object_type_id]
 
-            object_handle = self.gym.create_actor(env_ptr, object_asset, obj_pose, 'object', i, 0, 0)
+            object_handle = self.gym.create_actor(env_ptr, object_asset, obj_pose, 'object', i, 0, 2)
             self.object_init_state.append([
                 obj_pose.p.x, obj_pose.p.y, obj_pose.p.z,
                 obj_pose.r.x, obj_pose.r.y, obj_pose.r.z, obj_pose.r.w,
@@ -247,6 +285,10 @@ class AllegroHandHora(VecTask):
             if self.aggregate_mode > 0:
                 self.gym.end_aggregate(env_ptr)
 
+            if self.enable_depth_camera:
+                camera_handle = self._create_depth_camera(env_ptr)
+                self.camera_handles.append(camera_handle)
+
             self.envs.append(env_ptr)
 
         self.object_init_state = to_torch(self.object_init_state, device=self.device, dtype=torch.float).view(self.num_envs, 13)
@@ -299,6 +341,12 @@ class AllegroHandHora(VecTask):
         self.priv_info_buf[env_ids, 0:3] = 0
         self.proprio_hist_buf[env_ids] = 0
         self.at_reset_buf[env_ids] = 1
+        if self.enable_depth_camera:
+            self.depth_noise_e[env_ids] = torch.normal(
+                0, self.depth_noise_e_scale,
+                size=(len(env_ids), self.depth_buf_height, self.depth_buf_width),
+                device=self.device, dtype=torch.float,
+            )
 
     def compute_observations(self):
         self._refresh_gym()
@@ -333,6 +381,30 @@ class AllegroHandHora(VecTask):
                 self.object_rot[:, None].repeat(1, self.point_cloud_sampled_dim, 1),
                 self.obj_point_clouds,
             )
+
+        if self.enable_depth_camera:
+            depth = self.capture_depth()  # (N, H, W)
+            # depth value noise: per-frame temporal + per-episode fixed
+            if self.depth_noise_t_scale > 0:
+                depth = depth + torch.normal(
+                    0, self.depth_noise_t_scale, size=depth.shape,
+                    device=self.device, dtype=torch.float,
+                )
+            if self.depth_noise_e_scale > 0:
+                depth = depth + self.depth_noise_e
+            # segmentation noise: dropout foreground, disturb background, full failure
+            if self.seg_dropout_ratio > 0:
+                fg_mask = depth != 0
+                drop = torch.zeros_like(depth).uniform_() < self.seg_dropout_ratio
+                depth[fg_mask & drop] = 0
+            if self.seg_disturb_ratio > 0:
+                bg_mask = depth == 0
+                disturb = torch.zeros_like(depth).uniform_() < self.seg_disturb_ratio
+                depth[bg_mask & disturb] = 1.0
+            if self.seg_failure_ratio > 0:
+                fail = torch.zeros(depth.shape[0], device=self.device).uniform_() < self.seg_failure_ratio
+                depth[fail] = 0
+            self.depth_image_buf[:, 0] = depth
 
     def compute_reward(self, actions):
         self.rot_axis_buf[:, -1] = -1
@@ -430,6 +502,69 @@ class AllegroHandHora(VecTask):
         colors = np.tile([1.0, 1.0, 0.0], (n * 3, 1)).astype(np.float32)  # yellow
         self.gym.add_lines(self.viewer, self.envs[env_idx], n * 3, lines.cpu().numpy(), colors)
 
+    def _create_depth_camera(self, env_ptr):
+        """Create a depth camera sensor for a given environment with optional randomization."""
+        camera_props = gymapi.CameraProperties()
+        camera_props.width = self.depth_cam_width
+        camera_props.height = self.depth_cam_height
+        if self.randomize_camera_fov:
+            camera_props.horizontal_fov = np.random.uniform(self.randomize_camera_fov_low, self.randomize_camera_fov_high)
+        else:
+            camera_props.horizontal_fov = 73.3
+        camera_props.enable_tensors = True
+
+        camera_handle = self.gym.create_camera_sensor(env_ptr, camera_props)
+
+        # Base camera pose: above the hand looking down at the object
+        cam_pose = gymapi.Transform()
+        cam_pose.p = gymapi.Vec3(0.14, 0.16, 0.81)
+        # Compute orientation: camera looks from cam_pos toward target (0, 0, 0.65)
+        # Using set_camera_location first to get the correct orientation, then apply randomization
+        cam_target = gymapi.Vec3(0.0, 0.0, 0.65)
+        self.gym.set_camera_location(camera_handle, env_ptr, cam_pose.p, cam_target)
+
+        if self.randomize_camera_pose:
+            # Get the current transform set by set_camera_location
+            cam_pose = self.gym.get_camera_transform(self.sim, env_ptr, camera_handle)
+            # Apply random rotation perturbation
+            rand_rpy = torch.normal(0, self.randomize_camera_r_std, size=(3,))
+            rand_quat = quat_from_euler_xyz(rand_rpy[0], rand_rpy[1], rand_rpy[2])
+            r = gymapi.Quat(float(rand_quat[0]), float(rand_quat[1]), float(rand_quat[2]), float(rand_quat[3]))
+            cam_pose.r = cam_pose.r * r
+            # Apply random position perturbation
+            rand_pos = torch.normal(0, self.randomize_camera_p_std, size=(3,))
+            cam_pose.p.x += float(rand_pos[0])
+            cam_pose.p.y += float(rand_pos[1])
+            cam_pose.p.z += float(rand_pos[2])
+            self.gym.set_camera_transform(camera_handle, env_ptr, cam_pose)
+
+        return camera_handle
+
+    def capture_depth(self):
+        """Render and capture depth images from all camera sensors."""
+        if self.headless:
+            if self.device != 'cpu':
+                self.gym.fetch_results(self.sim, True)
+            self.gym.step_graphics(self.sim)
+        self.gym.render_all_camera_sensors(self.sim)
+        self.gym.start_access_image_tensors(self.sim)
+        depth = -torch.stack(self.depth_tensors).to(self.device)
+        seg = torch.stack(self.seg_tensors).to(self.device)
+        self.gym.end_access_image_tensors(self.sim)
+        # Crop center region to buffer size
+        h, w = depth.shape[1], depth.shape[2]
+        ch, cw = self.depth_buf_height, self.depth_buf_width
+        top = (h - ch) // 2
+        left = (w - cw) // 2
+        depth = depth[:, top:top + ch, left:left + cw]
+        seg = seg[:, top:top + ch, left:left + cw]
+        # Clean up invalid values
+        depth[torch.isnan(depth)] = 0
+        depth[torch.isinf(depth)] = 0
+        # Keep only object depth (seg_id == 2)
+        depth *= (seg == 2)
+        return depth
+
     def _create_ground_plane(self):
         plane_params = gymapi.PlaneParams()
         plane_params.normal = gymapi.Vec3(0.0, 0.0, 1.0)
@@ -461,6 +596,8 @@ class AllegroHandHora(VecTask):
         self.obs_dict['priv_info'] = self.priv_info_buf.to(self.rl_device)
         self.obs_dict['proprio_hist'] = self.proprio_hist_buf.to(self.rl_device)
         self.obs_dict['point_cloud_info'] = self.point_cloud_buf.to(self.rl_device)
+        if self.enable_depth_camera:
+            self.obs_dict['depth_buf'] = self.depth_image_buf.to(self.rl_device)
         return self.obs_dict
 
     def step(self, actions):
@@ -468,6 +605,8 @@ class AllegroHandHora(VecTask):
         self.obs_dict['priv_info'] = self.priv_info_buf.to(self.rl_device)
         self.obs_dict['proprio_hist'] = self.proprio_hist_buf.to(self.rl_device)
         self.obs_dict['point_cloud_info'] = self.point_cloud_buf.to(self.rl_device)
+        if self.enable_depth_camera:
+            self.obs_dict['depth_buf'] = self.depth_image_buf.to(self.rl_device)
         return self.obs_dict, self.rew_buf, self.reset_buf, self.extras
 
     def update_low_level_control(self):
@@ -593,6 +732,17 @@ class AllegroHandHora(VecTask):
         self.point_cloud_buf = torch.zeros(
             (num_envs, self.point_cloud_sampled_dim, 3), device=self.device, dtype=torch.float
         )
+        # depth image buffer (N, 1, H, W)
+        if self.enable_depth_camera:
+            self.depth_image_buf = torch.zeros(
+                (num_envs, 1, self.depth_buf_height, self.depth_buf_width),
+                device=self.device, dtype=torch.float,
+            )
+            # per-episode fixed depth noise (re-sampled on reset)
+            self.depth_noise_e = torch.zeros(
+                (num_envs, self.depth_buf_height, self.depth_buf_width),
+                device=self.device, dtype=torch.float,
+            )
 
     def _setup_reward_config(self, r_config):
         self.angvel_clip_min = r_config['angvelClipMin']

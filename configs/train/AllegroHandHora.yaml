@@ -10,6 +10,7 @@ load_path: ${..checkpoint} # path to the checkpoint to load
 
 ppo:
   output_name: 'debug'
+  s2_cache_suffix: ''
   normalize_input: True
   normalize_value: True
   value_bootstrap: True
@@ -44,3 +45,4 @@ ppo:
   point_cloud_sampled_dim: ${...task.env.hora.pointCloudSampledDim}
   normalize_point_cloud: True
   point_mlp_units: [32, 32]
+  visual_distillation: ${...task.env.depthCamera.enable}

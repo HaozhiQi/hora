@@ -71,7 +71,7 @@ def main(config: DictConfig):
 
         # check whether execute train by mistake:
         best_ckpt_path = os.path.join(
-            'outputs', config.train.ppo.output_name,
+            output_dif,
             'stage1_nn' if config.train.algo == 'PPO' else 'stage2_nn', 'best.pth'
         )
         if os.path.exists(best_ckpt_path):

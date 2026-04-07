@@ -26,7 +26,7 @@ class MLP(nn.Module):
 
 
 class ProprioAdaptTConv(nn.Module):
-    def __init__(self):
+    def __init__(self, output_dim=8):
         super(ProprioAdaptTConv, self).__init__()
         self.channel_transform = nn.Sequential(
             nn.Linear(16 + 16, 32),
@@ -42,7 +42,7 @@ class ProprioAdaptTConv(nn.Module):
             nn.Conv1d(32, 32, (5,), stride=(1,)),
             nn.ReLU(inplace=True),
         )
-        self.low_dim_proj = nn.Linear(32 * 3, 8)
+        self.low_dim_proj = nn.Linear(32 * 3, output_dim)
 
     def forward(self, x):
         x = self.channel_transform(x)  # (N, 50, 32)
@@ -50,6 +50,24 @@ class ProprioAdaptTConv(nn.Module):
         x = self.temporal_aggregation(x)  # (N, 32, 3)
         x = self.low_dim_proj(x.flatten(1))
         return x
+
+
+class DepthConv(nn.Module):
+    def __init__(self):
+        super(DepthConv, self).__init__()
+        self.net = nn.Sequential(
+            nn.Conv2d(1, 8, 7, stride=2, padding=3),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(8, 16, 3, stride=2, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(16, 32, 3, stride=2, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, 32, 3, stride=2, padding=1),
+            nn.AdaptiveAvgPool2d((1, 1)),
+        )
+
+    def forward(self, x):
+        return self.net(x).flatten(1)  # (N, 32)
 
 
 class ActorCritic(nn.Module):
@@ -65,17 +83,27 @@ class ActorCritic(nn.Module):
         self.priv_info = kwargs['priv_info']
         self.priv_info_stage2 = kwargs['proprio_adapt']
         self.use_point_cloud = kwargs.get('point_cloud_sampled_dim', 0) > 0
+        self.visual_distillation = kwargs.get('visual_distillation', False)
         if self.priv_info:
             mlp_input_shape += self.priv_mlp[-1]
             self.env_mlp = MLP(units=self.priv_mlp, input_size=kwargs['priv_info_dim'])
 
             if self.use_point_cloud:
                 point_mlp_units = kwargs['point_mlp_units']
-                mlp_input_shape += point_mlp_units[-1]
+                self.point_cloud_output_dim = point_mlp_units[-1]
+                mlp_input_shape += self.point_cloud_output_dim
                 self.point_mlp = MLP(units=point_mlp_units, input_size=3)
 
             if self.priv_info_stage2:
-                self.adapt_tconv = ProprioAdaptTConv()
+                if self.visual_distillation:
+                    # adapt_tconv predicts priv part, depth_conv predicts visual part
+                    self.adapt_tconv = ProprioAdaptTConv(output_dim=self.priv_mlp[-1])
+                    self.depth_conv = DepthConv()
+                elif self.use_point_cloud:
+                    # adapt_tconv predicts full extrin (priv + visual) from proprio alone
+                    self.adapt_tconv = ProprioAdaptTConv(output_dim=self.priv_mlp[-1] + self.point_cloud_output_dim)
+                else:
+                    self.adapt_tconv = ProprioAdaptTConv(output_dim=self.priv_mlp[-1])
 
         self.actor_mlp = MLP(units=self.units, input_size=mlp_input_shape)
         self.value = torch.nn.Linear(out_size, 1)
@@ -121,9 +149,21 @@ class ActorCritic(nn.Module):
         extrin, extrin_gt = None, None
         if self.priv_info:
             if self.priv_info_stage2:
-                extrin = self.adapt_tconv(obs_dict['proprio_hist'])
+                if self.visual_distillation and 'depth_buf' in obs_dict:
+                    extrin_proprio = self.adapt_tconv(obs_dict['proprio_hist'])
+                    extrin_visual = self.depth_conv(obs_dict['depth_buf'])
+                    extrin = torch.cat([extrin_proprio, extrin_visual], dim=-1)
+                else:
+                    extrin = self.adapt_tconv(obs_dict['proprio_hist'])
                 # during supervised training, extrin has gt label
-                extrin_gt = self.env_mlp(obs_dict['priv_info']) if 'priv_info' in obs_dict else extrin
+                if 'priv_info' in obs_dict:
+                    extrin_gt = self.env_mlp(obs_dict['priv_info'])
+                    if self.use_point_cloud and 'point_cloud_info' in obs_dict:
+                        pcs = self.point_mlp(obs_dict['point_cloud_info'])
+                        pcs = torch.max(pcs, 1)[0]
+                        extrin_gt = torch.cat([extrin_gt, pcs], dim=-1)
+                else:
+                    extrin_gt = extrin
                 extrin_gt = torch.tanh(extrin_gt)
                 extrin = torch.tanh(extrin)
                 obs = torch.cat([obs, extrin], dim=-1)

@@ -8,6 +8,23 @@
 import numpy as np
 
 
+def sample_mesh(mesh_file, num_points=100, scale=1.0, seed=None):
+    """Sample points from the surface of a mesh file using trimesh.
+
+    Args:
+        mesh_file: path to mesh file (e.g., .obj)
+        num_points: number of points to sample
+        scale: uniform scale factor to apply
+        seed: random seed for reproducibility
+    Returns:
+        pcs: (num_points, 3) numpy array of sampled surface points
+    """
+    import trimesh
+    mesh = trimesh.load(mesh_file)
+    pcs = np.array(trimesh.sample.sample_surface(mesh, num_points, seed=seed)[0]) * scale
+    return pcs
+
+
 def sample_cylinder(h, num_points=100, num_circle_points=15, side_points=70):
     """Sample points from the surface of a unit-radius cylinder.
 

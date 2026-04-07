@@ -6,6 +6,7 @@
 # --------------------------------------------------------
 
 import os
+import pickle
 import torch
 import numpy as np
 import xml.etree.ElementTree as ET
@@ -14,7 +15,7 @@ from isaacgym import gymapi
 from isaacgym.torch_utils import to_torch, unscale, quat_apply, tensor_clamp, torch_rand_float, quat_conjugate, quat_mul, quat_from_euler_xyz
 from glob import glob
 from hora.utils.misc import tprint
-from hora.utils.point_cloud_prep import sample_cylinder
+from hora.utils.point_cloud_prep import sample_cylinder, sample_mesh
 from .base.vec_task import VecTask
 
 
@@ -36,6 +37,8 @@ class AllegroHandHora(VecTask):
         self.up_axis = 'z'
         self.reset_z_threshold = self.config['env']['reset_height_threshold']
         self.grasp_cache_name = self.config['env']['grasp_cache_name']
+        self.num_pose_per_cache = int(self.config['env'].get('numPosePerCache', 50000))
+        self.generate_per_object_cache = len(self.object_type_list) > 1
         self.evaluate = self.config['on_evaluation']
         # depth camera config (must be before super().__init__)
         depth_cam_cfg = config['env'].get('depthCamera', {})
@@ -127,10 +130,23 @@ class AllegroHandHora(VecTask):
 
         if self.randomize_scale and self.scale_list_init:
             self.saved_grasping_states = {}
+            self.init_per_object_cache = False
             for s in self.randomize_scale_list:
-                self.saved_grasping_states[str(s)] = torch.from_numpy(np.load(
-                    f'cache/{self.grasp_cache_name}_grasp_50k_s{str(s).replace(".", "")}.npy'
-                )).float().to(self.device)
+                cache_name = f'{self.grasp_cache_name}/s{str(s).replace(".", "")}_{self.num_pose_per_cache}'
+                if os.path.exists(f'cache/{cache_name}.pkl'):
+                    # per-object cache (realshape): dict → (num_objects, num_poses, 23) tensor
+                    self.init_per_object_cache = True
+                    with open(f'cache/{cache_name}.pkl', 'rb') as handle:
+                        grasp_states_dict = pickle.load(handle)
+                    state_at_this_scale = np.zeros((len(self.object_type_list), self.num_pose_per_cache, 23))
+                    for i, k in enumerate(self.object_type_list):
+                        state_at_this_scale[i] = grasp_states_dict[k]
+                    self.saved_grasping_states[str(s)] = torch.from_numpy(state_at_this_scale).float().to(self.device)
+                else:
+                    # legacy single-object cache
+                    self.saved_grasping_states[str(s)] = torch.from_numpy(np.load(
+                        f'cache/{self.grasp_cache_name}_grasp_50k_s{str(s).replace(".", "")}.npy'
+                    )).float().to(self.device)
         else:
             assert self.save_init_pose
 
@@ -204,6 +220,7 @@ class AllegroHandHora(VecTask):
 
         self.hand_indices = []
         self.object_indices = []
+        self.object_type_at_env = []
         self.obj_point_clouds = []
 
         allegro_hand_rb_count = self.gym.get_asset_rigid_body_count(self.hand_asset)
@@ -225,6 +242,7 @@ class AllegroHandHora(VecTask):
             # add object
             object_type_id = np.random.choice(len(self.object_type_list), p=self.object_type_prob)
             object_asset = self.object_asset_list[object_type_id]
+            self.object_type_at_env.append(object_type_id)
 
             object_handle = self.gym.create_actor(env_ptr, object_asset, obj_pose, 'object', i, 0, 2)
             self.object_init_state.append([
@@ -295,6 +313,7 @@ class AllegroHandHora(VecTask):
         self.object_rb_handles = to_torch(self.object_rb_handles, dtype=torch.long, device=self.device)
         self.hand_indices = to_torch(self.hand_indices, dtype=torch.long, device=self.device)
         self.object_indices = to_torch(self.object_indices, dtype=torch.long, device=self.device)
+        self.object_type_at_env = to_torch(self.object_type_at_env, dtype=torch.long, device=self.device)
         if self.point_cloud_sampled_dim > 0:
             self.obj_point_clouds = to_torch(np.array(self.obj_point_clouds), device=self.device, dtype=torch.float)
 
@@ -317,8 +336,15 @@ class AllegroHandHora(VecTask):
                 continue
             obj_scale = self.randomize_scale_list[n_s]
             scale_key = str(obj_scale)
-            sampled_pose_idx = np.random.randint(self.saved_grasping_states[scale_key].shape[0], size=len(s_ids))
-            sampled_pose = self.saved_grasping_states[scale_key][sampled_pose_idx].clone()
+            if self.saved_grasping_states[scale_key].ndim == 3:
+                # per-object cache: shape (num_objects, num_poses, 23)
+                obj_type_id_s = self.object_type_at_env[s_ids]
+                grasping_state_scale_obj = self.saved_grasping_states[scale_key][obj_type_id_s]
+                sampled_pose_idx = np.random.randint(grasping_state_scale_obj.shape[1], size=len(grasping_state_scale_obj))
+                sampled_pose = grasping_state_scale_obj[np.arange(len(grasping_state_scale_obj)), sampled_pose_idx].clone()
+            else:
+                sampled_pose_idx = np.random.randint(self.saved_grasping_states[scale_key].shape[0], size=len(s_ids))
+                sampled_pose = self.saved_grasping_states[scale_key][sampled_pose_idx].clone()
             self.root_state_tensor[self.object_indices[s_ids], :7] = sampled_pose[:, 16:]
             self.root_state_tensor[self.object_indices[s_ids], 7:13] = 0
             pos = sampled_pose[:, :16]
@@ -714,6 +740,13 @@ class AllegroHandHora(VecTask):
                 for i, name in enumerate(cylinders):
                     self.asset_files_dict[f'cylinder_{i}'] = name.replace('../assets/', '')
                 self.object_type_prob += [raw_prob[p_id] / len(cylinder_list) for _ in cylinder_list]
+            elif 'realshape' in prim:
+                realshape_list = sorted(glob(f'assets/realshape/*.urdf'))
+                object_names = [os.path.splitext(os.path.basename(f))[0] for f in realshape_list]
+                self.object_type_list += object_names
+                for name, path in zip(object_names, realshape_list):
+                    self.asset_files_dict[name] = path
+                self.object_type_prob += [raw_prob[p_id] / len(object_names) for _ in object_names]
             else:
                 self.object_type_list += [prim]
                 self.object_type_prob += [raw_prob[p_id]]
@@ -778,10 +811,21 @@ class AllegroHandHora(VecTask):
         for object_type in self.object_type_list:
             object_asset_file = self.asset_files_dict[object_type]
             object_asset_options = gymapi.AssetOptions()
+            # enable VHACD for realshape meshes (convex decomposition)
+            if 'realshape' in object_asset_file or 'contactdb' in object_type:
+                object_asset_options.vhacd_enabled = True
             object_asset = self.gym.load_asset(self.sim, asset_root, object_asset_file, object_asset_options)
             self.object_asset_list.append(object_asset)
             # generate point cloud for this asset
-            if self.point_cloud_sampled_dim > 0 and 'cylin' in object_type:
+            if self.point_cloud_sampled_dim > 0 and ('realshape' in object_asset_file or 'contactdb' in object_type):
+                urdf_path = os.path.join(asset_root, object_asset_file)
+                root = ET.parse(urdf_path).getroot()
+                mesh_geom = root.find('.//collision/geometry/mesh')
+                scale = float(mesh_geom.attrib['scale'].split()[0])
+                mesh_file = urdf_path.replace('.urdf', '.obj')
+                pcs = sample_mesh(mesh_file, num_points=self.point_cloud_sampled_dim, scale=scale)
+                self.asset_point_clouds.append(pcs)
+            elif self.point_cloud_sampled_dim > 0 and 'cylin' in object_type:
                 urdf_path = os.path.join(asset_root, object_asset_file)
                 root = ET.parse(urdf_path).getroot()
                 geom = root.find('.//collision/geometry/cylinder')

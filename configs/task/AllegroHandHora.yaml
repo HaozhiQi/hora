@@ -26,6 +26,7 @@ env:
   clipActions: 1.0
   reset_height_threshold: 0.645
   grasp_cache_name: 'internal_allegro'
+  numPosePerCache: 50000
 
   # Random forces applied to the object
   forceScale: 0.0

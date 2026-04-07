@@ -5,6 +5,9 @@
 # Licensed under The MIT License [see LICENSE for details]
 # --------------------------------------------------------
 
+import os
+import sys
+import pickle
 import torch
 import numpy as np
 from isaacgym import gymtorch
@@ -15,7 +18,14 @@ from hora.tasks.allegro_hand_hora import AllegroHandHora
 class AllegroHandGrasp(AllegroHandHora):
     def __init__(self, config, sim_device, graphics_device_id, headless):
         super().__init__(config, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless)
-        self.saved_grasping_states = torch.zeros((0, 23), dtype=torch.float, device=self.device)
+        if self.generate_per_object_cache:
+            self.saved_grasping_states = {
+                k: torch.zeros((0, 23), dtype=torch.float, device=self.device)
+                for k in self.object_type_list
+            }
+        else:
+            self.saved_grasping_states = torch.zeros((0, 23), dtype=torch.float, device=self.device)
+
         self.canonical_pose = [
             0.082, 1.244, 0.265, 0.298, 1.104, 1.163, 0.953, -0.138,
             0.005, 1.096, 0.080, 0.150, 0.029, 1.337, 0.285, 0.317,
@@ -23,6 +33,9 @@ class AllegroHandGrasp(AllegroHandHora):
         self.x_unit_tensor = to_torch([1, 0, 0], dtype=torch.float, device=self.device).repeat((self.num_envs, 1))
         self.y_unit_tensor = to_torch([0, 1, 0], dtype=torch.float, device=self.device).repeat((self.num_envs, 1))
         self.z_unit_tensor = to_torch([0, 0, 1], dtype=torch.float, device=self.device).repeat((self.num_envs, 1))
+
+        self.cache_dir = os.path.join('cache', self.grasp_cache_name)
+        os.makedirs(self.cache_dir, exist_ok=True)
 
     def reset_idx(self, env_ids):
         if self.randomize_mass:
@@ -34,13 +47,13 @@ class AllegroHandGrasp(AllegroHandHora):
                 for p in prop:
                     p.mass = np.random.uniform(lower, upper)
                 self.gym.set_actor_rigid_body_properties(env, handle, prop)
-                self._update_priv_buf(env_id=env_id, name='obj_mass', value=prop[0].mass, lower=0, upper=0.2)
+                self._update_priv_buf(env_id=env_id, name='obj_mass', value=prop[0].mass)
         else:
             for env_id in env_ids:
                 env = self.envs[env_id]
                 handle = self.gym.find_actor_handle(env, 'object')
                 prop = self.gym.get_actor_rigid_body_properties(env, handle)
-                self._update_priv_buf(env_id=env_id, name='obj_mass', value=prop[0].mass, lower=0, upper=0.2)
+                self._update_priv_buf(env_id=env_id, name='obj_mass', value=prop[0].mass)
 
         if self.randomize_pd_gains:
             self.p_gain[env_ids] = torch_rand_float(
@@ -59,21 +72,61 @@ class AllegroHandGrasp(AllegroHandHora):
         all_states = torch.cat([
             self.allegro_hand_dof_pos, self.root_state_tensor[self.object_indices, :7]
         ], dim=1)
-        self.saved_grasping_states = torch.cat([self.saved_grasping_states, all_states[env_ids][success]])
-        print('current cache size:', self.saved_grasping_states.shape[0])
-        if len(self.saved_grasping_states) >= 5e4:
-            name = f'cache/{self.grasp_cache_name}_grasp_50k_s{str(self.base_obj_scale).replace(".", "")}.npy'
-            np.save(name, self.saved_grasping_states[:50000].cpu().numpy())
-            exit()
+
+        if self.generate_per_object_cache:
+            for i in range(len(self.object_type_list)):
+                obj_key = self.object_type_list[i]
+                if self.saved_grasping_states[obj_key].shape[0] >= self.num_pose_per_cache:
+                    self.saved_grasping_states[obj_key] = self.saved_grasping_states[obj_key][:self.num_pose_per_cache]
+                else:
+                    obj_mask = self.object_type_at_env[env_ids] == i
+                    self.saved_grasping_states[obj_key] = torch.cat([
+                        self.saved_grasping_states[obj_key],
+                        all_states[env_ids[obj_mask]][success[obj_mask]]
+                    ])
+                    self.saved_grasping_states[obj_key] = self.saved_grasping_states[obj_key][:self.num_pose_per_cache]
+            min_number = min([v.shape[0] for v in self.saved_grasping_states.values()])
+            max_number = max([v.shape[0] for v in self.saved_grasping_states.values()])
+            sys.stdout.flush()
+            print(f'current min cache size: {min_number}, max: {max_number}')
+            if min_number >= self.num_pose_per_cache:
+                cache_name = f'{self.cache_dir}/s{str(self.base_obj_scale).replace(".", "")}_{self.num_pose_per_cache}.pkl'
+                save_dict = {}
+                for k in self.object_type_list:
+                    save_dict[k] = self.saved_grasping_states[k].cpu().numpy()
+                with open(cache_name, 'wb') as f:
+                    pickle.dump(save_dict, f, protocol=pickle.HIGHEST_PROTOCOL)
+                print(f'Saved per-object grasp cache to {cache_name}')
+                exit()
+        else:
+            self.saved_grasping_states = torch.cat([self.saved_grasping_states, all_states[env_ids][success]])
+            print('current cache size:', self.saved_grasping_states.shape[0])
+            if len(self.saved_grasping_states) >= self.num_pose_per_cache:
+                cache_name = f'{self.cache_dir}/s{str(self.base_obj_scale).replace(".", "")}_{self.num_pose_per_cache}.npy'
+                np.save(cache_name, self.saved_grasping_states[:self.num_pose_per_cache].cpu().numpy())
+                print(f'Saved grasp cache to {cache_name}')
+                exit()
 
         # reset object
         self.root_state_tensor[self.object_indices[env_ids]] = self.object_init_state[env_ids].clone()
         self.root_state_tensor[self.object_indices[env_ids], 0:2] = self.object_init_state[env_ids, 0:2]
         self.root_state_tensor[self.object_indices[env_ids], self.up_axis_idx] = self.object_init_state[env_ids, self.up_axis_idx]
-        new_object_rot = randomize_rotation(rand_floats[:, 3], rand_floats[:, 4], self.x_unit_tensor[env_ids], self.y_unit_tensor[env_ids])
-        new_object_rot[:] = 0
-        new_object_rot[:, -1] = 1
-        self.root_state_tensor[self.object_indices[env_ids], 3:7] = new_object_rot
+
+        # randomize object rotation for realshape
+        if 'realshape' in self.object_type:
+            rand_rotate = torch_rand_float(-1.0, 1.0, (len(env_ids), 3), device=self.device)
+            new_object_rot = quat_mul(
+                quat_mul(quat_from_angle_axis(rand_rotate[:, 0] * np.pi, self.x_unit_tensor[env_ids]),
+                         quat_from_angle_axis(rand_rotate[:, 1] * np.pi, self.y_unit_tensor[env_ids])),
+                quat_from_angle_axis(rand_rotate[:, 2] * np.pi, self.z_unit_tensor[env_ids])
+            )
+            self.root_state_tensor[self.object_indices[env_ids], 3:7] = new_object_rot
+        else:
+            new_object_rot = randomize_rotation(rand_floats[:, 3], rand_floats[:, 4], self.x_unit_tensor[env_ids], self.y_unit_tensor[env_ids])
+            new_object_rot[:] = 0
+            new_object_rot[:, -1] = 1
+            self.root_state_tensor[self.object_indices[env_ids], 3:7] = new_object_rot
+
         self.root_state_tensor[self.object_indices[env_ids], 7:13] = torch.zeros_like(
             self.root_state_tensor[self.object_indices[env_ids], 7:13])
 

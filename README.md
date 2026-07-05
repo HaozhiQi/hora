@@ -26,7 +26,7 @@ Join our [discord](https://discord.gg/Trxzk78TQh) channel for interactive commun
 ## Disclaimer
 
 It is worth noticing that:
-1. Simulation: The repo is mainly developed and debugged using IsaacGym Preview 4.0 ([Download](https://drive.google.com/file/d/1StaRl_hzYFYbJegQcyT7-yjgutc6C7F9)). Please note the results will be inconsistent if you train with IsaacGym Preview 3.0.
+1. Simulation: The repo is mainly developed and debugged using IsaacGym Preview 4.0 ([Download](https://drive.google.com/file/d/17MvMAosN4FXm9lzEjpO1fdH-bVw13aSn)). Please note the results will be inconsistent if you train with IsaacGym Preview 3.0.
 2. Hardware: The method is developed using an internal version of AllegroHand. We also provide a reference implementation (but please refer to version [0.0.1](https://github.com/HaozhiQi/hora/tree/v0.0.1) readme) and [video results](https://haozhi.io/hora/allegro_v4) using the public AllegroHand-v4.
 3. Results: The reward number in this repository are higher than what is reported in the paper. This is because we change the `reset` function order following [LeggedGym](https://github.com/leggedrobotics/legged_gym) instead of the one in [IsaacGymEnvs](https://github.com/NVIDIA-Omniverse/IsaacGymEnvs/blob/e8f1c66b24/isaacgymenvs/tasks/base/vec_task.py).
 
@@ -47,7 +47,7 @@ In this paper, we consider in-hand object rotation starting from a stable initia
 
 ```
 # file size 109M
-gdown 1xqmCDCiZjl2N7ndGsS_ZvnpViU7PH7a3 -O cache/data.zip
+gdown 17Qga98aF8ovVgzOEkuZqJe-xZTNdz3yS -O cache/data.zip
 unzip cache/data.zip -d cache/
 ```
 
@@ -73,7 +73,7 @@ This section can verify whether you install the repository and dependencies corr
 Download a pretrained policy:
 ```
 cd outputs/AllegroHandHora/
-gdown 17fr40KQcUyFXz4W1ejuLTzRqP-Qu9EPS -O hora_v0.0.2.zip
+gdown 1oNZAx-B9yGbgeAXBfd_a_sK5RZ--xOTp -O hora_v0.0.2.zip
 unzip hora_v0.0.2.zip -d ./hora_v0.0.2
 cd ../../
 ```

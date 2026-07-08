@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<title> In-Hand Object Rotation via Rapid Motor Adaptation </title>
+	<link href="res/css/bootstrap.min.css" rel="stylesheet">
+	<script src="res/css/fa.js"></script>
+
+	<style>
+      .header {
+        width: auto;
+        max-width: auto;
+        padding-top: 4rem;
+        padding-bottom: 2rem;
+        margin-bottom: 2rem;
+      }
+
+      a:link,a:visited
+      {
+        color: #0071bc;
+        text-decoration: none;
+      }
+
+      a:hover {
+        color: #208799;
+      }
+
+      hr {
+        border: 10;
+        height: 1px;
+        background-image: linear-gradient(to right, rgba(0, 113, 188, 0.2), rgba(0, 0, 0, 0.1), rgba(0, 113, 188, 0.2));
+      }
+
+      .gap-30 {height:30px;}
+      .gap-20 {height:20px;}
+      .gap-10 {height:10px;}
+      .gap-5 {height:5px;}
+
+      .no-gutters {
+      margin-right: 0;
+      margin-left: 0;
+    }
+
+    .btn {
+      margin-left: 0.2rem;
+      margin-right: 0.2rem;
+		}
+
+
+	</style>
+</head>
+
+<div class="header">
+	<div class="container">
+		<center><h1>In-Hand Object Rotation via Rapid Motor Adaptation</h1></center>
+		<div class="gap-20"></div>
+		<!--------------------- Author Names --------------------->
+		<center>
+			<a href="https://haozhi.io/" target="_blank" style="font-size:20px">Haozhi Qi</a><sup
+						style="font-size:14px">*,1,2</sup>,
+			<a href="https://ashish-kmr.github.io/" target="_blank" style="font-size:20px">Ashish Kumar</a><sup
+						style="font-size:14px">*,1</sup>,
+			<a href="https://www.robertocalandra.com/about/" target="_blank" style="font-size:20px">Roberto Calandra</a><sup
+						style="font-size:14px">2</sup>,
+			<a href="http://people.eecs.berkeley.edu/~yima/" target="_blank" style="font-size:20px">Yi Ma</a><sup
+						style="font-size:14px">1</sup>,
+			<a href="https://people.eecs.berkeley.edu/~malik/" target="_blank" style="font-size:20px">Jitendra Malik</a><sup
+						style="font-size:14px">1,2</sup>
+		</center>
+
+		<div class="gap-10"></div>
+		<center>
+			<sup style="font-size:12px">1</sup>UC Berkeley,
+			<sup style="font-size:12px">2</sup>Meta AI
+		</center>
+
+		<div class="gap-10"></div>
+
+		<center>
+			<p style="font-size:18px">Conference on Robot Learning (CoRL), 2022</p>
+		</center>
+
+		<div class="gap-10"></div>
+
+		<center>
+			<div class="btn-group" role="group">
+
+				<a href="https://arxiv.org/abs/2210.04887">
+					<button type="button" class="btn btn-dark">
+						<span class="icon">
+              <i class="fas fa-file-pdf"></i> Paper
+            </span>
+					</button>
+				</a>
+
+				<a href="https://github.com/HaozhiQi/hora/">
+					<button type="button" class="btn btn-dark">
+						<span class="icon">
+              <i class="fab fa-github"></i> Code
+            </span>
+					</button>
+				</a>
+
+				<a href="https://www.youtube.com/watch?v=yH0e0l-H7-8">
+					<button type="button" class="btn btn-dark">
+						<span class="icon">
+							<i class="fab fa-youtube"></i> Video
+						</span>
+					</button>
+				</a>
+
+
+				<a href="https://discord.gg/Trxzk78TQh">
+					<button type="button" class="btn btn-dark">
+						<span class="icon">
+              <i class="fas fa-comments"></i> Discord
+            </span>
+					</button>
+				</a>
+
+			</div>
+		</center>
+
+	</div>
+</div>
+
+<div class="container">
+	<!--------------------- abstract --------------------->
+	<div class="embed-responsive embed-responsive-16by9">
+	  <iframe class="embed-responsive-item" src="https://www.youtube.com/embed/yH0e0l-H7-8"></iframe>
+	</div>
+	<div class="gap-10"></div>
+
+	<hr>
+	<center>
+		<h2> Abstract </h2>
+		<p style="width:80%; text-align: justify; white-space: normal;"> Generalized in-hand manipulation has long been an
+			unsolved challenge
+			of robotics. As a small step towards this grand goal, we demonstrate how to design
+			and learn a simple adaptive controller to achieve in-hand object rotation using
+			only fingertips. The controller is trained entirely in simulation on only cylindrical
+			objects, which then – without any fine-tuning – can be directly deployed to a real
+			robot hand to rotate dozens of objects with diverse sizes, shapes, and weights over
+			the z-axis. This is achieved via rapid online adaptation of the robot’s controller
+			to the object properties using only proprioception history. Furthermore, natural
+			and stable finger gaits automatically emerge from training the control policy via
+			reinforcement learning. </p>
+	</center>
+
+	<hr>
+	<center>
+		<img class="img-fluid" src="figs/method.png" style="margin-bottom: 30px" width="98%" alt=""><br>
+	</center>
+
+	<hr>
+	<h3 style="text-align: center"> Rotate Different Objects using the Fingertips</h3>
+	<h5 style="text-align: center"><a href="./more.html">[Click to see more objects]</a></h5>
+	<div class="gap-10"></div>
+
+	<div class="row no-gutters">
+		<div class="col">
+			<center><video playsinline autoplay loop muted src="results/teaser.mp4" width="100%" preload="metadata"
+			       style="border-radius:10px;"></video></center>
+		</div>
+	</div>
+	<hr>
+
+	<div class="gap-10"></div>
+
+	<div class="row no-gutters">
+		<div class="col">
+			<center>
+				<h3 id="adapt" style="text-align: center"> Online Adaptation of Object's Size</h3>
+			</center>
+		</div>
+
+		<div class="col">
+			<center>
+				<h3 style="text-align: center"> Online Adaptation of Object's Mass</h3>
+			</center>
+		</div>
+	</div>
+	<div class="row no-gutters">
+		<div class="col">
+			<center><video playsinline autoplay loop muted src="results/transition.mp4" width="95%" preload="metadata"
+			       style="border-radius:10px;"></video></center>
+		</div>
+	</div>
+
+	<hr>
+	<h3 id="multi" style="text-align: center"> Multi-Axis Rotation Policy</h3>
+
+	<center><p style="width:70%; text-align: justify; white-space: normal;">
+		We also explore the possibility of perform goal-conditioned in-hand object rotation. This policy can perform
+		different axis rotations according to different inputs.
+	</p></center>
+
+	<div class="row no-gutters">
+		<div class="col">
+			<center><video playsinline autoplay loop muted src="results/multi_thorn.mp4" width="98%" preload="metadata"
+			       style="border-radius:10px;"></video></center>
+		</div>
+		<div class="col">
+			<center><video playsinline autoplay loop muted src="results/multi_tennis.mp4" width="98%" preload="metadata"
+			       style="border-radius:10px;"></video></center>
+		</div>
+		<div class="col">
+			<center><video playsinline autoplay loop muted src="results/multi_poly.mp4" width="98%" preload="metadata"
+			       style="border-radius:10px;"></video></center>
+		</div>
+	</div>
+
+
+	<hr>
+	<h3 id="gait" style="text-align: center">Cylinders v.s. Spheres</h3>
+
+	<center><p style="width:70%; text-align: justify; white-space: normal;">
+		Training with Cylindrical Objects is critical to the emergence of a stable and high-clerance gait. The following
+		video
+		shows the gait we got if we only use sphere objects for training.
+	</p></center>
+
+	<div class="row no-gutters">
+		<div class="col">
+			<center>
+				Training with <b>Cylinders</b>.
+			</center>
+		</div>
+		<div class="col">
+			<center>
+				Training with <b>Spheres</b>.
+			</center>
+		</div>
+		<div class="col">
+			<center>
+				Training with <b>Cylinders</b>.
+			</center>
+		</div>
+		<div class="col">
+			<center>
+				Training with <b>Spheres</b>.
+			</center>
+		</div>
+	</div>
+	<div class="gap-10"></div>
+	<div class="row no-gutters">
+		<div class="col">
+			<center><video playsinline autoplay loop muted src="results/cylin_vs_sphere.mp4" width="98%" preload="metadata"
+			       style="border-radius:10px;"></video></center>
+		</div>
+	</div>
+
+	<hr>
+	<h3 id="baseline" style="text-align: center">Comparison v.s. Baselines</h3>
+	<h5 style="text-align: center"><a href="./baselines.html">[Click to see other baseline comparisons]</a></h5>
+	<div class="row no-gutters">
+		<div class="col">
+			<center> Ours</center>
+		</div>
+		<div class="col">
+			<center> DR</center>
+		</div>
+		<div class="col">
+			<center> SysID</center>
+		</div>
+		<div class="col">
+			<center> NoAdapt</center>
+		</div>
+	</div>
+	<div class="row no-gutters">
+		<div class="col">
+			<center><video playsinline autoplay loop muted src="results/baseline_stack1.mp4" width="98%" preload="metadata"
+			       style="border-radius:10px;"></video></center>
+		</div>
+	</div>
+	<hr>
+
+	<h2 style="text-align: center"> Bibtex </h2>
+	<pre style="background-color: #f4f4f4;">
+
+  @InProceedings{qi2022hand,
+   author={Qi, Haozhi and Kumar, Ashish and Calandra, Roberto and Ma, Yi and Malik, Jitendra},
+   title={{In-Hand Object Rotation via Rapid Motor Adaptation}},
+   booktitle={Conference on Robot Learning (CoRL)},
+   year={2022}
+  }
+  </pre>
+	<hr>
+
+	<b><span style="font-size:22px">Acknowledgements:</span></b><br>
+
+	This research was supported as a BAIR Open Research Common Project with Meta. In addition, in their academic roles at UC Berkeley,  Haozhi, Ashish, and Jitendra were supported in part by DARPA Machine Common Sense (MCS) and Haozhi and Yi by ONR (N00014-20-1-2002 and N00014-22-1-2102). We thank Tingfan Wu and Mike Lambeta for their generous help on the hardware setup, Xinru Yang for her help on recording real-world videos. We also thank Mike Lambeta, Yu Sun, Tingfan Wu, Huazhe Xu, and Xinru Yang for providing feedback on earlier versions of this project.
+
+	<p style="text-align: right"><a href="https://github.com/HaozhiQi/haozhiqi.github.io/tree/master/hora" style="font-size:12px;">Code for
+		this Website</a></p>
+
+
+	<!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+	<!-- Include all compiled plugins (below), or include individual files as needed -->
+	<script src="res/js/bootstrap.min.js"></script>
+</div>
+
+</html>

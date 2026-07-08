@@ -35,7 +35,7 @@ python examples/joint_monkey.py
 
 Then we install the main repository by:
 ```
-git clone https://github.com/HaozhiQi/hora
+git clone --depth 1 --single-branch --branch main https://github.com/HaozhiQi/hora
 cd hora
 pip install -r requirements.txt
 ```
